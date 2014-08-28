@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<project name="JavaCard PKI isoApplet" default="dist" basedir=".">
+	<description>Builds the project. </description>
+
+ <!-- set global properties for this build -->
+	<property name="src" location="src"/>
+	<property name="classes" location="classes"/>
+	<property name="dist"  location="dist"/>
+
+ <!-- For accessing JC_HOME -->
+	<property environment="env"/>
+
+ <!-- JavaCard-specific directories -->
+	<path id="classpath" description="Sets the classpath to JavaCard API and tools">
+		<pathelement path="${env.JC_HOME}"/>
+		<pathelement path="${env.JC_HOME}/lib/api.jar"/>
+		<pathelement path="${env.JC_HOME}/lib/installer.jar"/>
+        <pathelement path="${env.JC_HOME}/lib/javacardframework.jar"/>
+        <pathelement path="${env.JC_HOME}/lib/converter.jar"/>
+        <pathelement path="${env.JC_HOME}/lib/offcardverifier.jar"/>
+        <pathelement path="${env.JC_HOME}/lib/scriptgen.jar"/>
+        <pathelement path="${env.JC_HOME}/lib/apdutool.jar"/>
+        <pathelement path="${env.JC_HOME}/lib/apduio.jar"/>
+        <pathelement path="."/>
+        <pathelement path="${classes}"/>
+        <pathelement path="${basedir}"/>		
+    </path>
+
+ <!-- Definitions for tasks for javacard tools -->
+    <taskdef name="apdutool"  
+        classname="com.sun.javacard.ant.tasks.APDUToolTask"/>     
+    <taskdef name="capgen"  
+        classname="com.sun.javacard.ant.tasks.CapgenTask"/>       
+    <taskdef name="maskgen"  
+        classname="com.sun.javacard.ant.tasks.MaskgenTask"/>    
+    <taskdef name="deploycap"  
+        classname="com.sun.javacard.ant.tasks.DeployCapTask"/>     
+    <taskdef name="exp2text"  
+        classname="com.sun.javacard.ant.tasks.Exp2TextTask"/>        
+    <taskdef name="convert" 
+        classname="com.sun.javacard.ant.tasks.ConverterTask"/> 
+    <taskdef name="verifyexport" 
+        classname="com.sun.javacard.ant.tasks.VerifyExpTask"/>
+    <taskdef name="verifycap" 
+        classname="com.sun.javacard.ant.tasks.VerifyCapTask"/>
+    <taskdef name="verifyrevision" 
+        classname="com.sun.javacard.ant.tasks.VerifyRevTask"/>
+    <taskdef name="scriptgen" 
+        classname="com.sun.javacard.ant.tasks.ScriptgenTask"/>
+    <typedef name="appletnameaid" 
+        classname="com.sun.javacard.ant.types.AppletNameAID"/>
+    <typedef name="jcainputfile" 
+        classname="com.sun.javacard.ant.types.JCAInputFile"/>
+    <typedef name="exportfiles" 
+        classname="org.apache.tools.ant.types.FileSet" />
+
+	<target name="init">
+	 <!-- Timestamp -->
+		<tstamp/>
+	 <!-- Create the classes directory structure used by compile -->
+    	<mkdir dir="${classes}"/>
+	 <!-- Copy JavaCard Export files -->
+		<copy todir="${classes}">
+			<fileset dir="${env.JC_HOME}/api_export_files" includes="**/*.exp"/>
+		</copy>
+	</target>
+
+	<target name="compile" depends="init" description="compile the source" >
+	 <!-- Compile the java code from ${src} into ${classes} -->
+		<javac debug="no" optimize="yes" srcdir="${src}" destdir="${classes}">
+			<classpath refid="classpath"/>
+			<compilerarg line="-target 1.5 -source 1.5"/>
+		</javac>
+	</target>
+	
+	<target name="dist" depends="compile" description="generate the distribution" >
+	 <!-- Create the distribution directory -->
+		<mkdir dir="${dist}"/>
+	 <!-- Create package-->
+		<convert
+			dir="${classes}"
+			Configfile="${src}/net/pwendland/javacard/pki/IsoApplet.opt">
+			<classpath refid="classpath"/>
+    	</convert> 
+	</target>
+
+	<target name="clean" description="clean up" >
+	 <!-- Delete the ${classes} and ${dist} directory trees -->		
+		<delete dir="${dist}"/>
+		<delete dir="${classes}"/>
+	</target>
+
+</project>
