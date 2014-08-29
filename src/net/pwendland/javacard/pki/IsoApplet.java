@@ -77,7 +77,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
     private static final byte PIN_MIN_LENGTH = 4;
     private static final byte PIN_MAX_LENGTH = 16;
     // PUK:
-    private static final boolean PUK_MUST_BE_SET = false;
+    private static final boolean PUK_MUST_BE_SET = true;
     private static final byte PUK_MAX_TRIES = 5;
     private static final byte PUK_LENGTH = 16;
     // Keys:
