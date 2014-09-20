@@ -1107,9 +1107,6 @@ public class IsoApplet extends Applet implements ExtendedLength {
      * 			using the private key referenced by	an earlier
      *			MANAGE SECURITY ENVIRONMENT apdu.
      *
-     * \todo XXX Is the maximum assumed data size of the apdu data correct? A hash for RSA
-     *			will surely fit in, but for ECDSA?
-     *
      * \attention The apdu should contain a hash, not raw data for RSA keys.
      * 				PKCS1 padding will be applied if neccessary.
      *
