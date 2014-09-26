@@ -51,6 +51,10 @@ import javacard.security.Signature;
  * \author Philip Wendland
  */
 public class IsoApplet extends Applet implements ExtendedLength {
+	/* API Version */
+	public static final byte API_VERSION_MAJOR = (byte) 0x00;
+	public static final byte API_VERSION_MINOR = (byte) 0x01;
+
     /* Card-specific configuration */
     public static final boolean DEF_EXT_APDU = false;
 
@@ -194,9 +198,19 @@ public class IsoApplet extends Applet implements ExtendedLength {
         byte cla = buffer[ISO7816.OFFSET_CLA];
         byte ins = buffer[ISO7816.OFFSET_INS];
 
-        // Just return if we are being selected - command is destined for ISD
-        // and no information has to be returned.
+        // Return the API version if we are being selected.
+        // Format:
+        //  - byte 0: Major version
+        //  - byte 1: Minor version
+        //  - byte 2: Feature bitmap (used to distinguish between applet features)
         if(selectingApplet()) {
+            buffer[0] = API_VERSION_MAJOR;
+            buffer[1] = API_VERSION_MINOR;
+            buffer[2] = 0x00;
+            if(DEF_EXT_APDU) {
+                buffer[2] |= 0x01;
+            }
+            apdu.setOutgoingAndSend((short) 0, (short) 3);
             return;
         }
 
