@@ -51,9 +51,9 @@ import javacard.security.Signature;
  * \author Philip Wendland
  */
 public class IsoApplet extends Applet implements ExtendedLength {
-	/* API Version */
-	public static final byte API_VERSION_MAJOR = (byte) 0x00;
-	public static final byte API_VERSION_MINOR = (byte) 0x01;
+    /* API Version */
+    public static final byte API_VERSION_MAJOR = (byte) 0x00;
+    public static final byte API_VERSION_MINOR = (byte) 0x02;
 
     /* Card-specific configuration */
     public static final boolean DEF_EXT_APDU = false;
@@ -305,20 +305,18 @@ public class IsoApplet extends Applet implements ExtendedLength {
             ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
         }
 
-		// Caller asks if verification is needed.
-		if(lc == 0 
-			&& state != STATE_CREATION
-			&& state != STATE_INITIALISATION)
-		{
-			// Verification required, return remaining tries.
+        // Caller asks if verification is needed.
+        if(lc == 0
+                && state != STATE_CREATION
+                && state != STATE_INITIALISATION) {
+            // Verification required, return remaining tries.
             ISOException.throwIt((short)(SW_PIN_TRIES_REMAINING | pin.getTriesRemaining()));
-		}else if(lc == 0 
-			&& (state == STATE_CREATION
-			|| state == STATE_INITIALISATION))
-		{
-			// No verification required.
-			ISOException.throwIt(ISO7816.SW_NO_ERROR);
-		}
+        } else if(lc == 0
+                  && (state == STATE_CREATION
+                      || state == STATE_INITIALISATION)) {
+            // No verification required.
+            ISOException.throwIt(ISO7816.SW_NO_ERROR);
+        }
 
         // Pad the PIN if not done by caller, so no garbage from the APDU will be part of the PIN.
         Util.arrayFillNonAtomic(buf, (short)(offset_cdata + lc), (short)(PIN_MAX_LENGTH - lc), (byte) 0x00);
@@ -554,9 +552,16 @@ public class IsoApplet extends Applet implements ExtendedLength {
             break;
 
         case ALG_GEN_EC_BRAINPOOLP192R1:
-            privKey = (ECPrivateKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PRIVATE, KeyBuilder.LENGTH_EC_FP_192, false);
-            pubKey = (ECPublicKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PUBLIC, KeyBuilder.LENGTH_EC_FP_192, false);
-            kp = new KeyPair(pubKey, privKey);
+            try {
+                privKey = (ECPrivateKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PRIVATE, KeyBuilder.LENGTH_EC_FP_192, false);
+                pubKey = (ECPublicKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PUBLIC, KeyBuilder.LENGTH_EC_FP_192, false);
+                kp = new KeyPair(pubKey, privKey);
+            } catch(CryptoException e) {
+                if(e.getReason() == CryptoException.NO_SUCH_ALGORITHM) {
+                    ISOException.throwIt(ISO7816.SW_FUNC_NOT_SUPPORTED);
+                }
+                ISOException.throwIt(ISO7816.SW_UNKNOWN);
+            }
             pubKey.setFieldFP(ECCurves.EC_BRAINPOOLP192R1_PARAM_P, (short) 0, (short) ECCurves.EC_BRAINPOOLP192R1_PARAM_P.length); // "p"
             pubKey.setA(ECCurves.EC_BRAINPOOLP192R1_PARAM_A, (short) 0, (short) ECCurves.EC_BRAINPOOLP192R1_PARAM_A.length);
             pubKey.setB(ECCurves.EC_BRAINPOOLP192R1_PARAM_B, (short) 0, (short) ECCurves.EC_BRAINPOOLP192R1_PARAM_B.length);
@@ -571,12 +576,17 @@ public class IsoApplet extends Applet implements ExtendedLength {
             sendECPublicKey(apdu, ((ECPublicKey)(kp.getPublic())));
             break;
 
-
         case ALG_GEN_EC_PRIME256V1:
-            privKey = (ECPrivateKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PRIVATE, ECCurves.LENGTH_EC_FP_256, false);
-            pubKey = (ECPublicKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PUBLIC, ECCurves.LENGTH_EC_FP_256, false);
-            kp = new KeyPair(pubKey, privKey);
-
+            try {
+                privKey = (ECPrivateKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PRIVATE, ECCurves.LENGTH_EC_FP_256, false);
+                pubKey = (ECPublicKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PUBLIC, ECCurves.LENGTH_EC_FP_256, false);
+                kp = new KeyPair(pubKey, privKey);
+            } catch(CryptoException e) {
+                if(e.getReason() == CryptoException.NO_SUCH_ALGORITHM) {
+                    ISOException.throwIt(ISO7816.SW_FUNC_NOT_SUPPORTED);
+                }
+                ISOException.throwIt(ISO7816.SW_UNKNOWN);
+            }
             pubKey.setFieldFP(ECCurves.EC_PRIME256V1_PARAM_P, (short) 0, (short) ECCurves.EC_PRIME256V1_PARAM_P.length); // "p"
             pubKey.setA(ECCurves.EC_PRIME256V1_PARAM_A, (short) 0, (short) ECCurves.EC_PRIME256V1_PARAM_A.length);
             pubKey.setB(ECCurves.EC_PRIME256V1_PARAM_B, (short) 0, (short) ECCurves.EC_PRIME256V1_PARAM_B.length);
