@@ -19,6 +19,8 @@
 
 package net.pwendland.javacard.pki;
 
+import javacard.framework.Util;
+
 /**
  * \brief Utility class for TLV-realted operations.
  */
@@ -38,16 +40,19 @@ public class UtilTLV {
      *
      * \return The position of the tag if found or -1.
      */
-    public static short findTag(byte[] tlv, short tlvOffset, byte tlvLength, byte tag) {
+    public static short findTag(byte[] tlv, short tlvOffset, short tlvLength, byte tag) {
         short tagPos = tlvOffset;
+        short len;
+
         while(tagPos < (short)(tlvLength+tlvOffset-1)) {
             if(tlv[tagPos] == tag) {
                 return tagPos;
             }
-            // Increase the position by the length of the tlv currently looked at plus 2.
+            len = decodeLengthField(tlv, (short)(tagPos+1));
+            // Increase the position by: T length (1), L length, V length.
             // I.e. look at the next Tag, jump over current L and V field.
             // This saves execution time and ensures that no byte from V is misinterpreted.
-            tagPos += (short) (tlv[(short) (tagPos+1)] + 2);
+            tagPos += 1 + getLengthFieldLength(len) + len;
         }
         return -1;
     }
@@ -69,9 +74,76 @@ public class UtilTLV {
      */
     public static boolean isTLVconsistent(byte[] tlv, short offset, short length) {
         short pos = offset;
+        short len;
+
         while(pos < (short)(length+offset-1)) {
-            pos += (short) (tlv[(short)(pos+1)] + 2);
+            len = decodeLengthField(tlv, (short)(pos+1));
+            if(len < 0) {
+                return false;
+            }
+            pos += 1 + getLengthFieldLength(len) + len;
         }
         return (pos == (short)(offset+length));
     }
+
+    /**
+     * \brief Decode the length field of a TLV-entry.
+     *
+     * The length field itself can be 1, 2 or 3 bytes long:
+     * 	- If the length is between 0 and 127, it is 1 byte long.
+     * 	- If the length is between 128 and 255, it is 2 bytes long.
+     *		The first byte is 0x81 to indicate this.
+     *	- If the length is between 256 and 65535, it is 3 bytes long.
+     *		The first byte is 0x82, the following 2 contain the actual length.
+     *		Note: Only lengths up to 0x7FFF (32767) are supported here, because a short in Java is signed.
+     *
+     * \param buf The buffer containing the length field.
+     *
+     * \param offset The offset at where the length field starts.
+     *
+     * \param length The length of the buffer (buf). This is to prevent that the index gets out of bounds.
+     *
+     * \return The (positive) length encoded by the length field, or in case of an error, -1.
+     */
+    public static short decodeLengthField(byte[] buf, short offset) {
+        if(buf[offset] == (byte)0x82) { // 256..65535
+            // Check for short overflow
+            // (In Java, a short is signed: positive values are 0000..7FFF)
+            if(buf[(short)(offset+1)] > (byte)0x7F) {
+                return -1;
+            }
+            return Util.getShort(buf, (short)(offset+1));
+        } else if(buf[offset] == (byte)0x81) {
+            return (short) ( 0x00FF & buf[(short)(offset+1)]);
+        } else if(buf[offset] <= (byte)0x7F) {
+            return (short) ( 0x00FF & buf[offset]);
+        } else {
+            return -1;
+        }
+    }
+
+    /**
+     * \brief Get the length of the length field of a TLV-entry.
+     *
+     * Note: Not the length of the value-field is returned,
+     * but the length of the length field itself.
+     *
+     * \see decodeLengthField()
+     *
+     * \param length The decoded length from the TLV-entry.
+     *
+     * \return -1 in case of an error, or the length of the length entry.
+     */
+    public static short getLengthFieldLength(short length) {
+        if(length < 0) {
+            return -1;
+        } else if(length < 128) {
+            return 1;
+        } else if(length < 256) {
+            return 2;
+        } else {
+            return 3;
+        }
+    }
+
 }
