@@ -132,7 +132,7 @@ public class UtilTLV {
      *
      * \param length The decoded length from the TLV-entry.
      *
-     * \return -1 in case of an error, or the length of the length entry.
+     * \return -1 in case of an error, or the length of the length field.
      */
     public static short getLengthFieldLength(short length) {
         if(length < 0) {

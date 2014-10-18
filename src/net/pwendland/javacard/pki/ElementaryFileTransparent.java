@@ -31,7 +31,7 @@ public class ElementaryFileTransparent extends ElementaryFile {
      * \brief Instantiate a new transparent EF and store a reference to the data.
      *
      * \param fileControlInformation The array of bytes containing the valid (!) File Control Information.
-     *				It must contain the File ID (Tag 83). No Copy is made.
+     *				No Copy is made.
      *
      * \param data The byte array to be saved. No copy is made, only a reference is stored.
      *
@@ -53,8 +53,10 @@ public class ElementaryFileTransparent extends ElementaryFile {
      *
      * No actual data is being added at this point. Call getData() the get a reference and fill the array.
      *
+     * \para, fileID The ID of the file.
+     *
      * \param fileControlInformation The array of bytes containing the valid (!) File Control Information.
-     *				It must contain the File ID (Tag 83). No Copy is made.
+     *				No Copy is made.
      *
      * \param dataLength The length of the data array to allocate.
      *

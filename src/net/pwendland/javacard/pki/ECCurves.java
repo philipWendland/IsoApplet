@@ -19,6 +19,9 @@
 
 package net.pwendland.javacard.pki;
 
+/**
+ * \brief A helper class containing EC parameters.
+ */
 public abstract class ECCurves {
     public static final short LENGTH_EC_FP_256 = 256;
 
@@ -77,8 +80,8 @@ public abstract class ECCurves {
     };
     public static final short EC_BRAINPOOLP192R1_PARAM_K  = (short) 1; // Cofactor - "h"
 
-    /* secp256r1 / prime256v1 */
 
+    /* secp256r1 / prime256v1 */
     public static final byte[] EC_PRIME256V1_PARAM_P = {
         (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF,
         (byte) 0x00, (byte) 0x00, (byte) 0x00, (byte) 0x01,

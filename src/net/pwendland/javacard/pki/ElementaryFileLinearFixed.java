@@ -30,8 +30,10 @@ public class ElementaryFileLinearFixed extends ElementaryFileLinearVariable {
     /**
      * \brief Instantiate a new linear EF (fixed record size). No data is being added at this point.
      *
+     * \param fileID The ID of the file.
+     *
      * \param fileControlInformation The array of bytes containing the valid (!) File Control Information.
-     *				It must contain the File ID (Tag 83). No Copy is made.
+     *				No Copy is made.
      *
      * \param maxRecords The maximum amount of saved records.
      *
@@ -62,23 +64,29 @@ public class ElementaryFileLinearFixed extends ElementaryFileLinearVariable {
     /**
      * \brief Add a record to this EF (fixed record size).
      *
-     * \attention No record will be added if it is of the wrong size. No exception will be thrown either.
-     * Make sure that the record to add is of the correct length (e.g. by using getRecordLength() beforehand).
+     * \attention No record will be added if it is of the wrong size.
+     * 		Make sure that the record to add is of the correct length (e.g. by using getRecordLength() beforehand).
      *
      * \attention Only references are being stored, no copy is made (for perfomance reasons).
      *
      * \param record The byte array containing the data to save.
+     *
+     * \return 	true 	If the record had been added.
+     *			false	An error occurred, no record had been added.
      */
     @Override
-    public void addRecord(byte[] record) throws NotEnoughSpaceException {
+    public boolean addRecord(byte[] record) {
         if(records.length == currentRecordCount) {
-            throw NotEnoughSpaceException.getInstance();
+            // No space left.
+            return false;
         }
         if(record.length == recordLength) {
             // Create a new Record with the byte array as data and append it to the records array, increasing currentRecordCount.
             records[currentRecordCount++] = new Record(record);
+            return true;
+        } else {
+            return false;
         }
-        return;
     }
 
 }

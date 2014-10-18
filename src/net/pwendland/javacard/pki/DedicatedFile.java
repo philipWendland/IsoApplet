@@ -51,6 +51,8 @@ public class DedicatedFile extends File {
     /**
      * \brief Instantiate a new DedicatedFile.
      *
+     * \param fileID The file ID. Should be unique inside the filesystem.
+     *
      * \param fileControlInformation The array of bytes containing the valid (!) File Control Information.
      *				It must contain the File ID (Tag 83). No Copy is made.
      *
@@ -58,9 +60,7 @@ public class DedicatedFile extends File {
      *				later (e.g. the apdu buffer). Max length 257 bytes as the length
      *				of the FCI Tag (6F) must be a byte.
      *
-     * \attention To be safe, use FileFactory.getSafeFile() to instantiate files.
-     *
-     * \throw  IllegalArgumentException If necessary tags in the FCI are missing.
+     * \attention To be safe, use IsoFilesystem.getSafeFile() to instantiate files.
      *
      * \return The DedicatedFile.
      */
@@ -73,6 +73,12 @@ public class DedicatedFile extends File {
     /**
      * \brief Check if this is the name of this DedicatedFile.
      *
+     * \param name The array containing the name to compare with the file's name.
+     *
+     * \param offset The offset at where the name begins.
+     *
+     * \param length The length of the name.
+     *
      * \return false if the DF has no name or the names do not match,
      *			true else.
      */
@@ -84,11 +90,12 @@ public class DedicatedFile extends File {
             return false;
         } else {
             // This DF has a name.
-            if(length != (short) fci[(short)(namePos+1)]) {
+            if(length != UtilTLV.decodeLengthField(fci, (short)(namePos+1))) {
                 // The names do not have equal length.
                 return false;
             } else {
-                return ( (byte)0 == Util.arrayCompare(name, offset, fci, (short)(namePos+2), (short)(fci[(short)(namePos+1)])) );
+                return ( (byte)0 == Util.arrayCompare(name, offset, fci,
+                                                      (short)(namePos+1+UtilTLV.getLengthFieldLength(length)), length) );
             }
         }
     }
@@ -105,16 +112,18 @@ public class DedicatedFile extends File {
     /**
      * \brief Get a children of this Dedicated File.
      *
-     * This method returns the specified children of this DF.
+     * This method returns the specified children of this DF. Can be used in conjunction with getChildrenCount()
+     * to iterate over all children.
      *
-     * \param num The number of the children. This number references to the order in which the child was added.
+     * \param num The number of the children, starting at 0 to getChildrenCount(). The references can change when
+     *				children had been deleted.
      *
      * \throw FileNotFoundException If the specified file was not found unter this DF.
      *
      * \return The children file if present. May be a DedicatedFile or any non-abstract ElementaryFile subclass.
      */
     public File getChildren(byte num) throws FileNotFoundException {
-        if(num > this.currentNumChildren) {
+        if(num >= this.currentNumChildren) {
             throw FileNotFoundException.getInstance();
         }
         return children[num];
@@ -148,11 +157,12 @@ public class DedicatedFile extends File {
         currentNumChildren--; // We have one less children now.
 
         // Fill up empty field in children array.
+        // The last children is one ahead, so it is at currentNumChildren.
         if(childNum < currentNumChildren) {
             children[childNum] = children[currentNumChildren];
         }
 
-        // Clean up garbage.
+        // Clean up the old file object.
         JCSystem.requestObjectDeletion();
     }
 
@@ -166,25 +176,24 @@ public class DedicatedFile extends File {
     public void addChildren(File childFile) throws NotEnoughSpaceException {
         // First we have to check for enough space.
         if(currentNumChildren >= (short)children.length) {
+            File[] newChildren = null;
             // The array is full - we try to increase the size.
             if((short)(children.length * 2) <= CHILDREN_COUNT_MAX) {
                 // Doubling the size is possible.
-                File[] newChildren = new File[(short)(children.length * 2)];
+                newChildren = new File[(short)(children.length * 2)];
                 copyFileArrayRefs(children, newChildren);
-                children = newChildren; // Initial children array is now garbage.
-                JCSystem.requestObjectDeletion();
             } else {
                 // Doubling not possible - try to at least increase to CHILDREN_COUNT_MAX.
                 if(currentNumChildren < CHILDREN_COUNT_MAX) {
-                    File[] newChildren = new File[CHILDREN_COUNT_MAX];
+                    newChildren = new File[CHILDREN_COUNT_MAX];
                     copyFileArrayRefs(children, newChildren);
-                    children = newChildren; // Initial children array is now garbage.
-                    JCSystem.requestObjectDeletion();
                 } else {
                     // CHILDREN_COUNT_MAX exceeded. No "space" left. Fail.
                     throw NotEnoughSpaceException.getInstance();
                 }
             }
+            children = newChildren; // Initial children array is now garbage.
+            JCSystem.requestObjectDeletion();
         } // We have enough space (now).
         children[currentNumChildren++] = childFile;
         return;
@@ -202,7 +211,9 @@ public class DedicatedFile extends File {
      */
     private static void copyFileArrayRefs(File[] src, File[] dest) {
         short i = 0;
-        for(i=0; i < src.length; i++) {
+        short length = src.length > dest.length ? (short)dest.length : (short)src.length;
+
+        for(i=0; i < length; i++) {
             dest[i] = src[i];
         }
         return;
@@ -250,7 +261,7 @@ public class DedicatedFile extends File {
             throw FileNotFoundException.getInstance();
         }
         short i;
-        for(i=0; i< currentNumChildren; i++) {
+        for(i=0; i < currentNumChildren; i++) {
             if(children[i] instanceof ElementaryFile &&
                     ((ElementaryFile)children[i]).getShortFileID() == sfi) {
                 return (ElementaryFile) children[i];
@@ -383,7 +394,7 @@ public class DedicatedFile extends File {
                         df = (DedicatedFile) df.getChildren( childPos);
                         break;
                     } else {
-                        // matching file ID, has children according to path, but is no DF.
+                        // Matching file ID, has children according to path, but is no DF.
                         // Something really bad happened or the path was invalid!
                         throw FileNotFoundException.getInstance();
                     }

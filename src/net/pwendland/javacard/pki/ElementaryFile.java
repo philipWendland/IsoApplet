@@ -31,15 +31,15 @@ public abstract class ElementaryFile extends File {
      * \brief Abstract constructor to be called by subclasses.
      *
      * \param fileControlInformation The array of bytes containing the valid (!) File Control Information.
-     *				It must contain the File ID (Tag 83). No Copy is made.
+     *									No Copy is made.
+     *
+     * \param fileID The ID of the file. Consistency with tag 0x83 from the FCI is NOT checked.
      *
      * \attention No copy of the FCI is made. Do not pass any buffer that is altered
      *				later (e.g. the apdu buffer). Max length 257 bytes as the length
      *				of the FCI Tag (6F) must be a byte.
      *
-     * \attention To be safe, use FileFactory.getSafeFile() to instantiate files.
-     *
-     * \throw IllegalArgumentException If necessary tags in the FCI are missing.
+     * \attention To be safe, use IsoFileSystem.getSafeFile() to instantiate files.
      */
     public ElementaryFile(short fileID, byte[] fileControlInformation) {
         super(fileID, fileControlInformation);
@@ -48,7 +48,7 @@ public abstract class ElementaryFile extends File {
     }
 
     /**
-     * \brief Get the short file ID (SFI).
+     * \brief Get the short file Identifier (SFI).
      *
      * \return The SFI.
      */

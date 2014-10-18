@@ -22,7 +22,7 @@ package net.pwendland.javacard.pki;
 /**
  * \brief The ElementaryFileLinearVariable class.
  *
- * It saves linear records of variable size.
+ * It stores linear records of variable size.
  *
  * \todo Find record methods?
  */
@@ -64,17 +64,18 @@ public class ElementaryFileLinearVariable extends ElementaryFile {
     /**
      * \brief Add a record.
      *
-     * \throws NotEnoughSpaceException If the maximum amount of records is exceeded.
-     *
      * \param record The data to save as record.
+     *
+     * \return 	true 	If the record had been added.
+     *			false	An error occurred, no record had been added.
      */
-    public void addRecord(byte[] record) throws NotEnoughSpaceException {
+    public boolean addRecord(byte[] record) {
         if(records.length == currentRecordCount) {
-            throw NotEnoughSpaceException.getInstance();
+            return false;
         }
         // Create a new Record with the byte array as data and append it to the records array, increasing currentRecordCount.
         records[currentRecordCount++] = new Record(record);
-        return;
+        return true;
     }
 
     /**
