@@ -31,6 +31,7 @@ import javacard.security.KeyPair;
 import javacard.security.Key;
 import javacard.security.RSAPublicKey;
 import javacard.security.RSAPrivateCrtKey;
+import javacard.security.ECKey;
 import javacard.security.ECPublicKey;
 import javacard.security.ECPrivateKey;
 import javacardx.crypto.Cipher;
@@ -53,7 +54,7 @@ import javacard.security.Signature;
 public class IsoApplet extends Applet implements ExtendedLength {
     /* API Version */
     public static final byte API_VERSION_MAJOR = (byte) 0x00;
-    public static final byte API_VERSION_MINOR = (byte) 0x03;
+    public static final byte API_VERSION_MINOR = (byte) 0x04;
 
     /* Card-specific configuration */
     public static final boolean DEF_EXT_APDU = false;
@@ -93,8 +94,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
     private static final byte ALG_GEN_RSA_2048 = (byte) 0xF3;
     private static final byte ALG_RSA_PAD_PKCS1 = (byte) 0x11;
 
-    private static final byte ALG_GEN_EC_BRAINPOOLP192R1 = (byte) 0xE0;
-    private static final byte ALG_GEN_EC_PRIME256V1 = (byte) 0xE1;
+    private static final byte ALG_GEN_EC = (byte) 0xEC;
     private static final byte ALG_ECDSA_SHA1 = (byte) 0x21;
 
     /* Card/Applet lifecycle states */
@@ -106,17 +106,22 @@ public class IsoApplet extends Applet implements ExtendedLength {
 
     /* Other constants */
     // "ram_buf" is used for:
-    //		- Caching of the RSA 2048 bit public key for GET RESPONSE (in case of normal APDUs).
-    //		- Caching of the ECC 256 bit public key information for GET RESPONSE (in case of normal APDUs).
-    //		- Caching of data for DECIPHER for command chaining (in case of normal APDUs).
-    private static final short RAM_BUF_SIZE = (short) 256;
+    //	* GET RESPONSE (caching for response APDUs):
+    //		- GENERATE ASYMMETRIC KEYPAIR: RSA 2048 bit and ECC >= 256 bit public key information.
+    //	* Command Chaining or extended APDUs (caching of command APDU data):
+    //		- DECIPHER (RSA 2048 bit).
+    //		- GENERATE ASYMMETRIC KEYPAIR: ECC curve parameters if large (> 256 bit) prime fields are used.
+    //		- PUT DATA: RSA and ECC private key import.
+    private static final short RAM_BUF_SIZE = (short) 510;
     // "ram_chaining_cache" is used for:
     //		- Caching of the amount of bytes remainung.
     //		- Caching of the current send position.
     //		- Determining how many operations had previously been performed in the chain (re-use CURRENT_POS)
-    private static final short RAM_CHAINING_CACHE_SIZE = (short) 2;
+    //		- Caching of the current INS (Only one chain at a time, for one specific instruction).
+    private static final short RAM_CHAINING_CACHE_SIZE = (short) 3;
     private static final short RAM_CHAINING_CACHE_OFFSET_BYTES_REMAINING = (short) 0;
     private static final short RAM_CHAINING_CACHE_OFFSET_CURRENT_POS = (short) 1;
+    private static final short RAM_CHAINING_CACHE_OFFSET_CURRENT_INS = (short) 2;
 
     /* Member variables: */
     private byte state;
@@ -222,17 +227,30 @@ public class IsoApplet extends Applet implements ExtendedLength {
             ISOException.throwIt(ISO7816.SW_SECURE_MESSAGING_NOT_SUPPORTED);
         }
 
-        /*
-         * Command chaining only for:
-         * 	- PERFORM SECURITY OPERATION without extended APDUs
-         * 	- PUT DATA
-         */
-        if( apdu.isCommandChainingCLA() && !(
-                    (!DEF_EXT_APDU && ins == INS_PERFORM_SECURITY_OPERATION)
-                    || ins == INS_PUT_DATA )
-          ) {
-            ISOException.throwIt(ISO7816.SW_COMMAND_CHAINING_NOT_SUPPORTED);
+        // Command chaining checks
+        if( apdu.isCommandChainingCLA() ) {
+            /*
+             * Command chaining only for:
+             * 	- PERFORM SECURITY OPERATION without extended APDUs
+             * 	- GENERATE ASYMMETRIC KEYKAIR without extended APDUs
+             * 	- PUT DATA
+             */
+            if( ins != INS_PUT_DATA
+                    && ins != INS_PERFORM_SECURITY_OPERATION && !DEF_EXT_APDU
+                    && ins != INS_GENERATE_ASYMMETRIC_KEYPAIR && !DEF_EXT_APDU) {
+                ISOException.throwIt(ISO7816.SW_COMMAND_CHAINING_NOT_SUPPORTED);
+            }
         }
+        /*
+         * Be sure that the last chain had been completed:
+         *		- If we are in the middle of a chain, the ins had been set and should match.
+         *		- A chain may start, or no chaining may happen when the ins is zero.
+         */
+        if(ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_INS] != 0
+                && ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_INS] != ins) {
+            ISOException.throwIt(SW_COMMAND_NOT_ALLOWED_GENERAL);
+        }
+
 
         if(apdu.isISOInterindustryCLA()) {
             switch (ins) {
@@ -345,11 +363,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
      *
      * If the state is STATE_CREATION, we can set the PUK without verification.
      * The state will advance to STATE_INITIALISATION (i.e. the PUK must be set before the PIN).
-     *
      * In a "later" state the user must authenticate himself to be able to change the PIN.
-     *
-     * \todo Allow setting the PIN in STATE_CREATION (to set up applet without PUK.), change to
-     *			STATE_OPERATIONAL_ACTIVATED.
      *
      * \param apdu The apdu.
      *
@@ -507,6 +521,115 @@ public class IsoApplet extends Applet implements ExtendedLength {
     }
 
     /**
+     * \brief Initialize an EC key with the curve parameters from buf.
+     *
+     * \param buf The buffer containing the EC curve parameters. It must be TLV with the following format:
+     * 				81 - prime
+     * 				82 - coefficient A
+     * 				83 - coefficient B
+     * 				84 - base point G
+     * 				85 - order
+     * 				87 - cofactor
+     *
+     * \param bOff The offset at where the first entry is located.
+     *
+     * \param bLen The remaining length of buf.
+     *
+     * \param key The EC key to initialize.
+     *
+     * \throw ISOException SW_DATA_INVALID, SW_WRONG_DATA
+     */
+    private void initEcParams(byte[] buf, short bOff, short bLen, ECKey key) throws ISOException {
+        short pos = bOff;
+        short len;
+
+
+        /* Search for the prime */
+        pos = UtilTLV.findTag(buf, bOff, bLen, (byte) 0x81);
+        if(pos < 0) {
+            ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+        }
+        pos++;
+        len = UtilTLV.decodeLengthField(buf, pos);
+        if(len < 0) {
+            ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+        }
+        pos += UtilTLV.getLengthFieldLength(len);
+        key.setFieldFP(buf, pos, len); // "p"
+
+        /* Search for coefficient A */
+        pos = UtilTLV.findTag(buf, bOff, bLen, (byte) 0x82);
+        if(pos < 0) {
+            ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+        }
+        pos++;
+        len = UtilTLV.decodeLengthField(buf, pos);
+        if(len < 0) {
+            ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+        }
+        pos += UtilTLV.getLengthFieldLength(len);
+        key.setA(buf, pos, len);
+
+        /* Search for coefficient B */
+        pos = UtilTLV.findTag(buf, bOff, bLen, (byte) 0x83);
+        if(pos < 0) {
+            ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+        }
+        pos++;
+        len = UtilTLV.decodeLengthField(buf, pos);
+        if(len < 0) {
+            ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+        }
+        pos += UtilTLV.getLengthFieldLength(len);
+        key.setB(buf, pos, len);
+
+        /* Search for base point G */
+        pos = UtilTLV.findTag(buf, bOff, bLen, (byte) 0x84);
+        if(pos < 0) {
+            ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+        }
+        pos++;
+        len = UtilTLV.decodeLengthField(buf, pos);
+        if(len < 0) {
+            ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+        }
+        pos += UtilTLV.getLengthFieldLength(len);
+        key.setG(buf, pos, len); // G(x,y)
+
+        /* Search for order */
+        pos = UtilTLV.findTag(buf, bOff, bLen, (byte) 0x85);
+        if(pos < 0) {
+            ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+        }
+        pos++;
+        len = UtilTLV.decodeLengthField(buf, pos);
+        if(len < 0) {
+            ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+        }
+        pos += UtilTLV.getLengthFieldLength(len);
+        key.setR(buf, pos, len); // Order of G - "q"
+
+        /* Search for cofactor*/
+        pos = UtilTLV.findTag(buf, bOff, bLen, (byte) 0x87);
+        if(pos < 0) {
+            ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+        }
+        pos++;
+        len = UtilTLV.decodeLengthField(buf, pos);
+        if(len < 0) {
+            ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+        }
+        pos += UtilTLV.getLengthFieldLength(len);
+        if(len == 2) {
+            key.setK(Util.getShort(buf, pos));
+        } else if(len == 1) {
+            key.setK((short) buf[pos]);
+        } else {
+            ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+        }
+    }
+
+    /**
      * \brief Process the GENERATE ASYMMETRIC KEY PAIR apdu (INS = 46).
      *
      * Currently, only RSA 2048 bit keys are supported. A MANAGE SECURITY ENVIRONMENT must
@@ -522,6 +645,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
         byte p1 = buf[ISO7816.OFFSET_P1];
         byte p2 = buf[ISO7816.OFFSET_P2];
         short privKeyRef = currentPrivateKeyRef[0];
+        short lc;
         KeyPair kp = null;
         ECPrivateKey privKey = null;
         ECPublicKey pubKey = null;
@@ -530,41 +654,68 @@ public class IsoApplet extends Applet implements ExtendedLength {
             ISOException.throwIt(ISO7816.SW_SECURITY_STATUS_NOT_SATISFIED);
         }
 
-        if(p1 != (byte) 0x42 || p2 != (byte) 0x00) {
-            ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
-        }
-
-        // Lc should be 0.
-        if(apdu.setIncomingAndReceive() != 0) {
-            ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
-        }
-
         switch(currentAlgorithmRef[0]) {
         case ALG_GEN_RSA_2048:
-            if(ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_BYTES_REMAINING] > (short) 0) {
-                // This is the second command of the chain - the keypair has already been generated.
-                sendRSAPublicKey(apdu, null);
-            } else {
-                try {
-                    kp = new KeyPair(KeyPair.ALG_RSA_CRT, KeyBuilder.LENGTH_RSA_2048);
-                } catch(CryptoException e) {
-                    if(e.getReason() == CryptoException.NO_SUCH_ALGORITHM) {
-                        ISOException.throwIt(ISO7816.SW_FUNC_NOT_SUPPORTED);
-                    }
-                    ISOException.throwIt(ISO7816.SW_UNKNOWN);
-                }
-                kp.genKeyPair();
-                keys[privKeyRef] = kp.getPrivate();
-
-                // Return pubkey. See ISO7816-8 table 3.
-                sendRSAPublicKey(apdu, ((RSAPublicKey)(kp.getPublic())));
+            if(p1 != (byte) 0x42 || p2 != (byte) 0x00) {
+                ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
             }
+
+            // For RSA key generation, lc should be zero.
+            lc = apdu.setIncomingAndReceive();
+            if(lc != 0) {
+                ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
+            }
+            // Command chaining might be used for ECC, but not for RSA.
+            if(apdu.isCommandChainingCLA()) {
+                ISOException.throwIt(ISO7816.SW_COMMAND_CHAINING_NOT_SUPPORTED);
+            }
+            try {
+                kp = new KeyPair(KeyPair.ALG_RSA_CRT, KeyBuilder.LENGTH_RSA_2048);
+            } catch(CryptoException e) {
+                if(e.getReason() == CryptoException.NO_SUCH_ALGORITHM) {
+                    ISOException.throwIt(ISO7816.SW_FUNC_NOT_SUPPORTED);
+                }
+                ISOException.throwIt(ISO7816.SW_UNKNOWN);
+            }
+            kp.genKeyPair();
+            keys[privKeyRef] = kp.getPrivate();
+
+            // Return pubkey. See ISO7816-8 table 3.
+            sendRSAPublicKey(apdu, ((RSAPublicKey)(kp.getPublic())));
+
             break;
 
-        case ALG_GEN_EC_BRAINPOOLP192R1:
+        case ALG_GEN_EC:
+            if((p1 != (byte) 0x00) || p2 != (byte) 0x00) {
+                ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
+            }
+            lc = doChainingOrExtAPDU(apdu);
+
+            /* Search for prime */
+            short pos = UtilTLV.findTag(ram_buf, (short) 0, lc, (byte) 0x81);
+            if(pos < 0) {
+                ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+            }
+            pos++;
+            short len = UtilTLV.decodeLengthField(ram_buf, pos);
+            if(len < 0) {
+                ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+            }
+            // Try to calculate field length frome prime length.
+            short field_len = (short)(len * 8);
+            if(field_len != (short)192
+                    && field_len != (short) 224
+                    && field_len != (short) 256
+                    && field_len != (short) 320
+                    && field_len != (short) 384
+                    && field_len != (short) 512) {
+                ISOException.throwIt(ISO7816.SW_FUNC_NOT_SUPPORTED);
+            }
+
+            // Try to instantiate key objects of that length
             try {
-                privKey = (ECPrivateKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PRIVATE, KeyBuilder.LENGTH_EC_FP_192, false);
-                pubKey = (ECPublicKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PUBLIC, KeyBuilder.LENGTH_EC_FP_192, false);
+                privKey = (ECPrivateKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PRIVATE, field_len, false);
+                pubKey = (ECPublicKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PUBLIC, field_len, false);
                 kp = new KeyPair(pubKey, privKey);
             } catch(CryptoException e) {
                 if(e.getReason() == CryptoException.NO_SUCH_ALGORITHM) {
@@ -572,43 +723,16 @@ public class IsoApplet extends Applet implements ExtendedLength {
                 }
                 ISOException.throwIt(ISO7816.SW_UNKNOWN);
             }
-            pubKey.setFieldFP(ECCurves.EC_BRAINPOOLP192R1_PARAM_P, (short) 0, (short) ECCurves.EC_BRAINPOOLP192R1_PARAM_P.length); // "p"
-            pubKey.setA(ECCurves.EC_BRAINPOOLP192R1_PARAM_A, (short) 0, (short) ECCurves.EC_BRAINPOOLP192R1_PARAM_A.length);
-            pubKey.setB(ECCurves.EC_BRAINPOOLP192R1_PARAM_B, (short) 0, (short) ECCurves.EC_BRAINPOOLP192R1_PARAM_B.length);
-            pubKey.setG(ECCurves.EC_BRAINPOOLP192R1_PARAM_G, (short) 0, (short) ECCurves.EC_BRAINPOOLP192R1_PARAM_G.length); // G(x,y)
-            pubKey.setR(ECCurves.EC_BRAINPOOLP192R1_PARAM_R, (short) 0, (short) ECCurves.EC_BRAINPOOLP192R1_PARAM_R.length); // Order of G - "q"
-            pubKey.setK(ECCurves.EC_BRAINPOOLP192R1_PARAM_K); // Cofactor - "h"
-
+            initEcParams(ram_buf, (short) 0, lc, pubKey);
             kp.genKeyPair();
-            keys[privKeyRef] = kp.getPrivate();
+            keys[privKeyRef] = privKey;
+
+            Util.arrayFillNonAtomic(ram_buf, (short)0, RAM_BUF_SIZE, (byte)0x00);
+            ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_POS] = 0;
+            ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_INS] = 0;
 
             // Return pubkey. See ISO7816-8 table 3.
-            sendECPublicKey(apdu, ((ECPublicKey)(kp.getPublic())));
-            break;
-
-        case ALG_GEN_EC_PRIME256V1:
-            try {
-                privKey = (ECPrivateKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PRIVATE, ECCurves.LENGTH_EC_FP_256, false);
-                pubKey = (ECPublicKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PUBLIC, ECCurves.LENGTH_EC_FP_256, false);
-                kp = new KeyPair(pubKey, privKey);
-            } catch(CryptoException e) {
-                if(e.getReason() == CryptoException.NO_SUCH_ALGORITHM) {
-                    ISOException.throwIt(ISO7816.SW_FUNC_NOT_SUPPORTED);
-                }
-                ISOException.throwIt(ISO7816.SW_UNKNOWN);
-            }
-            pubKey.setFieldFP(ECCurves.EC_PRIME256V1_PARAM_P, (short) 0, (short) ECCurves.EC_PRIME256V1_PARAM_P.length); // "p"
-            pubKey.setA(ECCurves.EC_PRIME256V1_PARAM_A, (short) 0, (short) ECCurves.EC_PRIME256V1_PARAM_A.length);
-            pubKey.setB(ECCurves.EC_PRIME256V1_PARAM_B, (short) 0, (short) ECCurves.EC_PRIME256V1_PARAM_B.length);
-            pubKey.setG(ECCurves.EC_PRIME256V1_PARAM_G, (short) 0, (short) ECCurves.EC_PRIME256V1_PARAM_G.length); // G(x,y)
-            pubKey.setR(ECCurves.EC_PRIME256V1_PARAM_R, (short) 0, (short) ECCurves.EC_PRIME256V1_PARAM_R.length); // Order of G - "q"
-            pubKey.setK(ECCurves.EC_PRIME256V1_PARAM_K); // Cofactor - "h"
-
-            kp.genKeyPair();
-            keys[privKeyRef] = kp.getPrivate();
-
-            // Return pubkey. See ISO7816-8 table 3.
-            sendECPublicKey(apdu, ((ECPublicKey)(kp.getPublic())));
+            sendECPublicKey(apdu, pubKey);
             break;
 
         default:
@@ -683,7 +807,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
             // Currently there are 9 Bytes in the apdu buffer. The length of the modulus is 256 bytes - it does not fit in.
             // We have to split the modulus and send a part of it with the first apdu.
             // We write it to "ram_buf" first.
-            if(key.getModulus(ram_buf, (short) 0) != 256) { // Write the modulus to the apdu buffer.
+            if(key.getModulus(ram_buf, (short) 0) != 256) {
                 ISOException.throwIt(ISO7816.SW_UNKNOWN);
             }
 
@@ -752,10 +876,6 @@ public class IsoApplet extends Applet implements ExtendedLength {
      * \brief Encode a ECPublicKey according to ISO7816-8 table 3 and send it as a response,
      * using an extended APDU.
      *
-     * \attention Only extended APDUs are supported at the moment for larger field sizes.
-     *
-     * \todo Add support for command chaining in addition to extended APDUs (DEF_EXT_APDU=false)
-     *
      * \see ISO7816-8 table 3.
      *
      * \param The apdu to answer. setOutgoing() must not be called already.
@@ -765,17 +885,22 @@ public class IsoApplet extends Applet implements ExtendedLength {
         short le = apdu.setOutgoing();
         short pos = 0;
         short lengthPos = 0;
+        short outer_value_len;
 
         // Return pubkey. See ISO7816-8 table 3.
         buf[pos++] = (byte) 0x7F;
         buf[pos++] = (byte) 0x49;
-        if(key.getSize() == KeyBuilder.LENGTH_EC_FP_192) {
+
+        outer_value_len = (short)(7 // We have: 7 tags,
+                                  + (key.getSize() == 512 ? 9 : 7) // 7 length fields, of which 2 are 2 byte fields when using 512 bit curves,
+                                  + (short)(8 * (short)(key.getSize()/8)) + 4); // 4 * field_len + 2 * 2 field_len + cofactor (2 bytes) + 2 * uncompressed tag
+        if(UtilTLV.getLengthFieldLength(outer_value_len) == 2) {
             buf[pos++] = (byte) 0x81; // Length field: 2 bytes.
-            buf[pos++] = (byte) 0xD0; // Length will be 218 bytes.
-        } else if(key.getSize() == ECCurves.LENGTH_EC_FP_256) {
+            buf[pos++] = (byte) outer_value_len; // Length will be 218 bytes.
+        } else {
             buf[pos++] = (byte) 0x82; // Length field: 3 bytes.
-            buf[pos++] = (byte) 0x01; // Length will be 282 bytes.
-            buf[pos++] = (byte) 0x1A;
+            Util.setShort(buf, pos, outer_value_len);
+            pos += 2;
         }
 
         // Prime - "P"
@@ -798,10 +923,9 @@ public class IsoApplet extends Applet implements ExtendedLength {
 
         // Generator - "PB"
         buf[pos++] = (byte) 0x84;
-        lengthPos = pos; // Don't incement pos - ISO doesn't want the "uncompressed" identifier (04).
+        lengthPos = pos++;
         buf[lengthPos] = (byte) key.getG(buf, pos);
         pos += buf[lengthPos];
-        buf[lengthPos]--;
 
         // Order - "Q"
         buf[pos++] = (byte) 0x85;
@@ -815,19 +939,19 @@ public class IsoApplet extends Applet implements ExtendedLength {
         Util.setShort(buf, pos, key.getK());
         pos+=2;
 
-        if((key.getSize() == ECCurves.LENGTH_EC_FP_256 && DEF_EXT_APDU)
-                || key.getSize() == KeyBuilder.LENGTH_EC_FP_192) {
+        if((key.getSize() > (short) 192 && DEF_EXT_APDU)
+                || key.getSize() <= (short)192) {
             // Data fits in a extended or short APDU.
             // Public key - "PP"
             buf[pos++] = (byte) 0x86;
-            lengthPos = pos; // Don't incement pos - ISO doesn't want the "uncompressed" identifier (04).
+            lengthPos = pos++;
             buf[lengthPos] = (byte) key.getW(buf, pos);
             pos += buf[lengthPos];
-            buf[lengthPos]--;
+
             apdu.setOutgoingLength(pos);
             apdu.sendBytes((short) 0, pos);
         } else {
-            // No extended APDUs and 256 Bit field length - we have 284 bytes to send.
+            // No extended APDUs and >192 bit field length - we have 284 bytes to send for 256 bit length.
             // Send the EC public point with the second APDU.
             // Send the first part, prepare ram_buf and make the caller use GET RESPONSE.
 
@@ -841,10 +965,9 @@ public class IsoApplet extends Applet implements ExtendedLength {
 
             pos = (short) 0;
             ram_buf[pos++] = (byte) 0x86;
-            lengthPos = pos; // Don't incement pos - ISO doesn't want the "uncompressed" identifier (04).
+            lengthPos = pos++;
             ram_buf[lengthPos] = (byte) key.getW(ram_buf, pos);
             pos += ram_buf[lengthPos];
-            ram_buf[lengthPos]--;
 
             ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_BYTES_REMAINING] = pos;
             ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_POS] = (short) 0;
@@ -859,8 +982,6 @@ public class IsoApplet extends Applet implements ExtendedLength {
 
     /**
      * \brief Process the MANAGE SECURITY ENVIRONMENT apdu (INS = 22).
-     *
-     * \todo Add support for other algoritm references.
      *
      * \attention Only SET is supported. RESTORE will reset the security environment.
      *				The security environment will be cleared upon deselection of the applet.
@@ -948,9 +1069,8 @@ public class IsoApplet extends Applet implements ExtendedLength {
              * Key generation. *
              *******************/
 
-            if(algRef != ALG_GEN_EC_BRAINPOOLP192R1
-                    && algRef != ALG_GEN_RSA_2048
-                    && algRef != ALG_GEN_EC_PRIME256V1) {
+            if(algRef != ALG_GEN_EC
+                    && algRef != ALG_GEN_RSA_2048) {
                 ISOException.throwIt(ISO7816.SW_FUNC_NOT_SUPPORTED);
             }
             // Check: We need a private key reference.
@@ -1193,7 +1313,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
             // checks have been done in MANAGE SECURITY ENVIRONMENT.
             ECPrivateKey ecKey = (ECPrivateKey) keys[currentPrivateKeyRef[0]];
 
-            final short blocksize = (short) (ecKey.getSize() / (short) 4);
+            final short blocksize = 64; // SHA-1 block size.
             short length = lc;
             short pos = offset_cdata;
 
@@ -1276,23 +1396,23 @@ public class IsoApplet extends Applet implements ExtendedLength {
      * \throw ISOException SW_SECURITY_STATUS_NOT_SATISFIED, SW_DATA_INVALID, SW_WRONG_LENGTH.
      */
     private void importPrivateKey(APDU apdu) throws ISOException {
+        byte[] buf = apdu.getBuffer();
         short offset_cdata;
         short lc, recvLen;
-        byte[] buf = apdu.getBuffer();
 
         if( ! pin.isValidated() ) {
             ISOException.throwIt(ISO7816.SW_SECURITY_STATUS_NOT_SATISFIED);
         }
-        recvLen = apdu.setIncomingAndReceive();
-        lc = apdu.getIncomingLength();
-        offset_cdata = apdu.getOffsetCdata();
 
-        if(lc != recvLen) {
-            ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
-        }
 
         if(currentAlgorithmRef[0] == ALG_GEN_RSA_2048) {
             // RSA key import.
+            recvLen = apdu.setIncomingAndReceive();
+            lc = apdu.getIncomingLength();
+            offset_cdata = apdu.getOffsetCdata();
+            if(lc != recvLen) {
+                ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
+            }
             if(apdu.isCommandChainingCLA()) {
                 if(ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_BYTES_REMAINING] == (short) 0) {
                     /*
@@ -1353,18 +1473,80 @@ public class IsoApplet extends Applet implements ExtendedLength {
                     ISOException.throwIt(ISO7816.SW_WRONG_DATA);
                 }
             }
-        } else if (currentAlgorithmRef[0] == ALG_GEN_EC_BRAINPOOLP192R1
-                   || currentAlgorithmRef[0] == ALG_GEN_EC_PRIME256V1) {
-            // Generating ECC keys - fits in one short APDU...
-            if(lc != recvLen) {
-                ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
+        } else if (currentAlgorithmRef[0] == ALG_GEN_EC) {
+            short offset = 0;
+            short len;
+
+            // This ensures that all the data is located in ram_buf, beginning at zero.
+            recvLen = doChainingOrExtAPDU(apdu);
+
+            // Parse the outer tag.
+            if( ram_buf[offset++] != (byte) 0xE0 ) {
+                ISOException.throwIt(ISO7816.SW_WRONG_DATA);
             }
-            if( ! UtilTLV.isTLVconsistent(buf, offset_cdata, lc) ) {
+            len = UtilTLV.decodeLengthField(ram_buf, offset);
+            if(len < (short)0) {
                 ISOException.throwIt(ISO7816.SW_DATA_INVALID);
             }
-            importECkey(buf, offset_cdata, lc);
+            offset += UtilTLV.getLengthFieldLength(len);
+            if(len != (short)(recvLen - offset)) {
+                ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+            }
+            if( ! UtilTLV.isTLVconsistent(ram_buf, offset, len) )	{
+                ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+            }
+            // Import the key from the value field of the outer tag.
+            importECkey(ram_buf, offset, len);
         } else {
             ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
+        }
+    }
+
+    /**
+     * \brief Receive the data sent by chaining or extended apdus and store it in ram_buf.
+     *
+     * This is a convienience method if large data has to be accumulated using command chaining
+     * or extended apdus. The apdu must be in the INITIAL state, i.e. setIncomingAndReceive()
+     * might not have been called already.
+     *
+     * \param apdu The apdu object in the initial state.
+     *
+     * \throw ISOException SW_WRONG_LENGTH
+     */
+    private short doChainingOrExtAPDU(APDU apdu) throws ISOException {
+        byte[] buf = apdu.getBuffer();
+        short recvLen = apdu.setIncomingAndReceive();
+        short lc = apdu.getIncomingLength();
+        short offset_cdata = apdu.getOffsetCdata();
+
+        // Receive data (short or extended).
+        while (recvLen > 0) {
+            if((short)(ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_POS] + recvLen) > RAM_BUF_SIZE) {
+                ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
+            }
+            Util.arrayCopyNonAtomic(buf, offset_cdata, ram_buf, ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_POS], recvLen);
+            ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_POS] += recvLen;
+            recvLen = apdu.receiveBytes(offset_cdata);
+        }
+
+        if(apdu.isCommandChainingCLA()) {
+            // We are currently executing a chain with a particular INS.
+            ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_INS] = buf[ISO7816.OFFSET_INS];
+
+            // We are still in the middle of a chain, otherwise there would not have been a chaining CLA.
+            // Make sure the caller does not forget to return as the data should only be interpreted
+            // when the chain is completed (when using this method).
+            ISOException.throwIt(ISO7816.SW_NO_ERROR);
+            return (short)0;
+        } else {
+            // Chain has ended or no chaining.
+            // We did receive the data, everything is fine.
+            // Set the current chaining INS to zero so that a new chain may be started.
+            ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_INS] = 0;
+            // Reset the current position in ram_buf.
+            recvLen = (short) (recvLen + ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_POS]);
+            ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_POS] = 0;
+            return recvLen;
         }
     }
 
@@ -1462,76 +1644,66 @@ public class IsoApplet extends Applet implements ExtendedLength {
      *
      */
     private void importECkey(byte[] buf, short bOff, short bLen) {
-        short pos, len, l_len;
+        short pos, len, field_len;
         ECPrivateKey ecPrKey = null;
 
-        switch(currentAlgorithmRef[0]) {
-        case ALG_GEN_EC_BRAINPOOLP192R1:
-
-            try {
-                ecPrKey = (ECPrivateKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PRIVATE, KeyBuilder.LENGTH_EC_FP_192, false);
-            } catch(CryptoException e) {
-                if(e.getReason() == CryptoException.NO_SUCH_ALGORITHM) {
-                    ISOException.throwIt(ISO7816.SW_FUNC_NOT_SUPPORTED);
-                }
-                ISOException.throwIt(ISO7816.SW_UNKNOWN);
-                return;
-            }
-            ecPrKey.setFieldFP(ECCurves.EC_BRAINPOOLP192R1_PARAM_P, (short) 0, (short) ECCurves.EC_BRAINPOOLP192R1_PARAM_P.length); // "p"
-            ecPrKey.setA(ECCurves.EC_BRAINPOOLP192R1_PARAM_A, (short) 0, (short) ECCurves.EC_BRAINPOOLP192R1_PARAM_A.length);
-            ecPrKey.setB(ECCurves.EC_BRAINPOOLP192R1_PARAM_B, (short) 0, (short) ECCurves.EC_BRAINPOOLP192R1_PARAM_B.length);
-            ecPrKey.setG(ECCurves.EC_BRAINPOOLP192R1_PARAM_G, (short) 0, (short) ECCurves.EC_BRAINPOOLP192R1_PARAM_G.length); // G(x,y)
-            ecPrKey.setR(ECCurves.EC_BRAINPOOLP192R1_PARAM_R, (short) 0, (short) ECCurves.EC_BRAINPOOLP192R1_PARAM_R.length); // Order of G - "q"
-            ecPrKey.setK(ECCurves.EC_BRAINPOOLP192R1_PARAM_K); // Cofactor - "h"
-
-            pos = UtilTLV.findTag(buf, bOff, bLen, (byte)0xC1);
-            pos++;
-            len = UtilTLV.decodeLengthField(buf, pos);
-            l_len = UtilTLV.getLengthFieldLength(len);
-            pos += l_len;
-
-            ecPrKey.setS(buf, pos, len);
-            break;
-
-        case ALG_GEN_EC_PRIME256V1:
-
-            try {
-                ecPrKey = (ECPrivateKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PRIVATE, ECCurves.LENGTH_EC_FP_256, false);
-            } catch(CryptoException e) {
-                if(e.getReason() == CryptoException.NO_SUCH_ALGORITHM) {
-                    ISOException.throwIt(ISO7816.SW_FUNC_NOT_SUPPORTED);
-                }
-                ISOException.throwIt(ISO7816.SW_UNKNOWN);
-                return;
-            }
-            ecPrKey.setFieldFP(ECCurves.EC_PRIME256V1_PARAM_P, (short) 0, (short) ECCurves.EC_PRIME256V1_PARAM_P.length); // "p"
-            ecPrKey.setA(ECCurves.EC_PRIME256V1_PARAM_A, (short) 0, (short) ECCurves.EC_PRIME256V1_PARAM_A.length);
-            ecPrKey.setB(ECCurves.EC_PRIME256V1_PARAM_B, (short) 0, (short) ECCurves.EC_PRIME256V1_PARAM_B.length);
-            ecPrKey.setG(ECCurves.EC_PRIME256V1_PARAM_G, (short) 0, (short) ECCurves.EC_PRIME256V1_PARAM_G.length); // G(x,y)
-            ecPrKey.setR(ECCurves.EC_PRIME256V1_PARAM_R, (short) 0, (short) ECCurves.EC_PRIME256V1_PARAM_R.length); // Order of G - "q"
-            ecPrKey.setK(ECCurves.EC_PRIME256V1_PARAM_K); // Cofactor - "h"
-
-            pos = UtilTLV.findTag(buf, bOff, bLen, (byte)0xC1);
-            pos++;
-            len = UtilTLV.decodeLengthField(buf, pos);
-            l_len = UtilTLV.getLengthFieldLength(len);
-            pos += l_len;
-
-            ecPrKey.setS(buf, pos, len);
-            break;
-
-        default:
+        if(currentAlgorithmRef[0] != ALG_GEN_EC) {
             ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
         }
-        if(!ecPrKey.isInitialized()) {
-            ISOException.throwIt(ISO7816.SW_UNKNOWN);
+
+        /* Search for prime */
+        pos = UtilTLV.findTag(buf, bOff, bLen, (byte) 0x81);
+        if(pos < 0) {
+            ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+        }
+        pos++;
+        len = UtilTLV.decodeLengthField(buf, pos);
+        if(len < 0) {
+            ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+        }
+        // Try to calculate field length frome prime length.
+        field_len = (short)(len * 8);
+        if(field_len != (short) 192
+                && field_len != (short) 224
+                && field_len != (short) 256
+                && field_len != (short) 320
+                && field_len != (short) 384
+                && field_len != (short) 512) {
+            ISOException.throwIt(ISO7816.SW_FUNC_NOT_SUPPORTED);
         }
 
-        // If the key is usable, it MUST NOT remain in buf.
-        JCSystem.beginTransaction();
-        Util.arrayFillNonAtomic(buf, bOff, bLen, (byte)0x00);
-        keys[currentPrivateKeyRef[0]] = ecPrKey;
-        JCSystem.commitTransaction();
+        // Try to instantiate key objects of that length
+
+        try {
+            ecPrKey = (ECPrivateKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PRIVATE, field_len, false);
+        } catch(CryptoException e) {
+            if(e.getReason() == CryptoException.NO_SUCH_ALGORITHM) {
+                ISOException.throwIt(ISO7816.SW_FUNC_NOT_SUPPORTED);
+            }
+            ISOException.throwIt(ISO7816.SW_UNKNOWN);
+            return;
+        }
+        initEcParams(buf, bOff, bLen, ecPrKey);
+
+        /* Set the private component "private D" */
+        pos = UtilTLV.findTag(buf, bOff, bLen, (byte)0x88);
+        pos++;
+        len = UtilTLV.decodeLengthField(buf, pos);
+        if(len < 0) {
+            ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+        }
+        pos += UtilTLV.getLengthFieldLength(len);
+        ecPrKey.setS(buf, pos, len);
+
+        if(ecPrKey.isInitialized()) {
+            // If the key is usable, it MUST NOT remain in buf.
+            JCSystem.beginTransaction();
+            Util.arrayFillNonAtomic(buf, bOff, bLen, (byte)0x00);
+            keys[currentPrivateKeyRef[0]] = ecPrKey;
+            JCSystem.commitTransaction();
+        } else {
+            ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+        }
     }
 
 } // class IsoApplet
