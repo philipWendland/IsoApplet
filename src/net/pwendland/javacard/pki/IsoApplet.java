@@ -724,6 +724,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
                 ISOException.throwIt(ISO7816.SW_UNKNOWN);
             }
             initEcParams(ram_buf, (short) 0, lc, pubKey);
+            initEcParams(ram_buf, (short) 0, lc, privKey);
             kp.genKeyPair();
             keys[privKeyRef] = privKey;
 
