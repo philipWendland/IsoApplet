@@ -228,7 +228,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
         }
 
         // Command chaining checks
-        if( apdu.isCommandChainingCLA() ) {
+        if( isCommandChainingCLA(apdu) ) {
             /*
              * Command chaining only for:
              * 	- PERFORM SECURITY OPERATION without extended APDUs
@@ -299,6 +299,23 @@ public class IsoApplet extends Applet implements ExtendedLength {
         } else {
             ISOException.throwIt(ISO7816.SW_CLA_NOT_SUPPORTED);
         }
+    }
+
+    /**
+     * \brief Parse the apdu's CLA byte to determine if the apdu is the first or second-last part of a chain.
+     *
+     * The Java Card API version 2.2.2 has a similar method (APDU.isCommandChainingCLA()), but tests have shown
+     * that some smartcard platform's implementations are wrong (not according to the JC API specification),
+     * specifically, but not limited to, JCOP 2.4.1 R3.
+     *
+     * \param apdu The apdu.
+     *
+     * \return true If the apdu is the [1;last[ part of a command chain,
+     *			false if there is no chain or the apdu is the last part of the chain.
+     */
+    static boolean isCommandChainingCLA(APDU apdu) {
+        byte[] buf = apdu.getBuffer();
+        return ((byte)(buf[0] & (byte)0x10) == (byte)0x10);
     }
 
     /**
@@ -666,7 +683,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
                 ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
             }
             // Command chaining might be used for ECC, but not for RSA.
-            if(apdu.isCommandChainingCLA()) {
+            if(isCommandChainingCLA(apdu)) {
                 ISOException.throwIt(ISO7816.SW_COMMAND_CHAINING_NOT_SUPPORTED);
             }
             try {
@@ -1199,14 +1216,14 @@ public class IsoApplet extends Applet implements ExtendedLength {
 
         // Padding indicator should be "No further indication".
         if(DEF_EXT_APDU &&	buf[offset_cdata] != (byte) 0x00
-                || !DEF_EXT_APDU && apdu.isCommandChainingCLA() && buf[offset_cdata] != (byte) 0x00
+                || !DEF_EXT_APDU && isCommandChainingCLA(apdu) && buf[offset_cdata] != (byte) 0x00
           ) {
             ISOException.throwIt(ISO7816.SW_WRONG_DATA);
         }
 
         // Use chaining if the card does not support extended APDUs.
         if( !DEF_EXT_APDU ) {
-            if(apdu.isCommandChainingCLA()) {
+            if(isCommandChainingCLA(apdu)) {
                 // Copy the first part of the block to ram_buf, except padding indicator byte.
                 Util.arrayCopy(buf, (short)(apdu.getOffsetCdata()+1), ram_buf, (short) 0, (short)(lc-1));
                 ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_POS] = (short)(lc-1);
@@ -1323,7 +1340,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
             //	- Command chaining is performed and this is the first apdu in the chain.
             if(ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_POS] == (short) 0) {
                 ecdsaSignature.init(ecKey, Signature.MODE_SIGN);
-                if(apdu.isCommandChainingCLA()) {
+                if(isCommandChainingCLA(apdu)) {
                     ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_POS] = (short) 1;
                 }
             }
@@ -1340,7 +1357,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
                 }
             }
 
-            if(!apdu.isCommandChainingCLA()) {
+            if(!isCommandChainingCLA(apdu)) {
                 sigLen = ecdsaSignature.sign(buf, pos, length, buf, (short) 0);
                 ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_POS] = (short) 0;
                 apdu.setOutgoingAndSend((short) 0, sigLen);
@@ -1405,7 +1422,6 @@ public class IsoApplet extends Applet implements ExtendedLength {
             ISOException.throwIt(ISO7816.SW_SECURITY_STATUS_NOT_SATISFIED);
         }
 
-
         if(currentAlgorithmRef[0] == ALG_GEN_RSA_2048) {
             // RSA key import.
             recvLen = apdu.setIncomingAndReceive();
@@ -1414,7 +1430,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
             if(lc != recvLen) {
                 ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
             }
-            if(apdu.isCommandChainingCLA()) {
+            if(isCommandChainingCLA(apdu)) {
                 if(ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_BYTES_REMAINING] == (short) 0) {
                     /*
                      * First part of the chain.
@@ -1530,7 +1546,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
             recvLen = apdu.receiveBytes(offset_cdata);
         }
 
-        if(apdu.isCommandChainingCLA()) {
+        if(isCommandChainingCLA(apdu)) {
             // We are currently executing a chain with a particular INS.
             ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_INS] = buf[ISO7816.OFFSET_INS];
 
