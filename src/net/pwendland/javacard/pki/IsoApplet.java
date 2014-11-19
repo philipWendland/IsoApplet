@@ -1213,42 +1213,28 @@ public class IsoApplet extends Applet implements ExtendedLength {
      */
     private void decipher(APDU apdu) {
         byte[] buf = apdu.getBuffer();
-        byte algoritm = (byte) (currentPrivateKeyRef[0] & 0x0F);
         short offset_cdata;
         short lc;
-        short le;
         short decLen = -1;
 
-        // Receive - only as much as the apdu buffer can hold.
-        // Sould be enough for 2048 bit modulus blocks with extended APDUs.
-        lc = apdu.setIncomingAndReceive();
-        if(lc != apdu.getIncomingLength()) {
-            ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
+        if(DEF_EXT_APDU && buf.length >= 267 && !isCommandChainingCLA(apdu)) {
+            // The data to be received is only 257 bytes plus cla, ins etc.
+            // If we use extended APDUs and the apdu buffer is large enough, a single receive will suffice.
+            // This reduces execution time.
+            lc = apdu.setIncomingAndReceive();
+            if(lc != apdu.getIncomingLength()) {
+                ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
+            }
+            offset_cdata = apdu.getOffsetCdata();
+        } else {
+            lc = doChainingOrExtAPDU(apdu);
+            buf = ram_buf;
+            offset_cdata = 0;
         }
-        offset_cdata = apdu.getOffsetCdata();
 
         // Padding indicator should be "No further indication".
-        if(DEF_EXT_APDU &&	buf[offset_cdata] != (byte) 0x00
-                || !DEF_EXT_APDU && isCommandChainingCLA(apdu) && buf[offset_cdata] != (byte) 0x00
-          ) {
+        if(buf[offset_cdata] != (byte) 0x00) {
             ISOException.throwIt(ISO7816.SW_WRONG_DATA);
-        }
-
-        // Use chaining if the card does not support extended APDUs.
-        if( !DEF_EXT_APDU ) {
-            if(isCommandChainingCLA(apdu)) {
-                // Copy the first part of the block to ram_buf, except padding indicator byte.
-                Util.arrayCopy(buf, (short)(apdu.getOffsetCdata()+1), ram_buf, (short) 0, (short)(lc-1));
-                ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_POS] = (short)(lc-1);
-                ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_BYTES_REMAINING] = (short) 2;
-                return;
-            } else {
-                Util.arrayCopy(buf, apdu.getOffsetCdata(),
-                               ram_buf, ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_POS],
-                               ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_BYTES_REMAINING]);
-                ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_POS] = (short) 256;
-                ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_BYTES_REMAINING] = (short) 0;
-            }
         }
 
         switch(currentAlgorithmRef[0]) {
@@ -1261,28 +1247,20 @@ public class IsoApplet extends Applet implements ExtendedLength {
             // Check the length of the cipher.
             // Note: The first byte of the data field is the padding indicator
             //		 and therefor not part of the ciphertext.
-            if(
-                DEF_EXT_APDU && (short)(lc-1) !=  (short)(theKey.getSize() / 8)
-                || !DEF_EXT_APDU && ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_POS] != (short)(theKey.getSize() / 8)
-            ) {
+            if((short)(lc-1) !=  (short)(theKey.getSize() / 8)) {
                 ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
             }
 
             rsaPkcs1Cipher.init(theKey, Cipher.MODE_DECRYPT);
             try {
-                if( DEF_EXT_APDU ) {
-                    decLen = rsaPkcs1Cipher.doFinal(buf, (short)(offset_cdata+1), (short)(lc-1),
-                                                    buf, (short) 0);
-                } else {
-                    decLen = rsaPkcs1Cipher.doFinal(ram_buf, (short) 0, ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_POS],
-                                                    buf, (short) 0);
-                }
+                decLen = rsaPkcs1Cipher.doFinal(buf, (short)(offset_cdata+1), (short)(lc-1),
+                                                apdu.getBuffer(), (short) 0);
             } catch(CryptoException e) {
                 ISOException.throwIt(ISO7816.SW_WRONG_DATA);
             }
 
             // We have to send at most 256 bytes. A short APDU can handle that - only one send operation neccessary.
-            apdu.setOutgoingAndSend((short) 0, decLen);
+            apdu.setOutgoingAndSend((short)0, decLen);
             break;
 
         default:
