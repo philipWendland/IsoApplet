@@ -118,10 +118,11 @@ public class IsoApplet extends Applet implements ExtendedLength {
     //		- Caching of the current send position.
     //		- Determining how many operations had previously been performed in the chain (re-use CURRENT_POS)
     //		- Caching of the current INS (Only one chain at a time, for one specific instruction).
-    private static final short RAM_CHAINING_CACHE_SIZE = (short) 3;
+    private static final short RAM_CHAINING_CACHE_SIZE = (short) 4;
     private static final short RAM_CHAINING_CACHE_OFFSET_BYTES_REMAINING = (short) 0;
     private static final short RAM_CHAINING_CACHE_OFFSET_CURRENT_POS = (short) 1;
     private static final short RAM_CHAINING_CACHE_OFFSET_CURRENT_INS = (short) 2;
+    private static final short RAM_CHAINING_CACHE_OFFSET_CURRENT_P1P2 = (short) 3;
 
     /* Member variables: */
     private byte state;
@@ -228,7 +229,8 @@ public class IsoApplet extends Applet implements ExtendedLength {
         }
 
         // Command chaining checks
-        if( isCommandChainingCLA(apdu) ) {
+        if(ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_INS] != 0 || isCommandChainingCLA(apdu)) {
+            short p1p2 = Util.getShort(buffer, ISO7816.OFFSET_P1);
             /*
              * Command chaining only for:
              * 	- PERFORM SECURITY OPERATION without extended APDUs
@@ -240,17 +242,26 @@ public class IsoApplet extends Applet implements ExtendedLength {
                     && ins != INS_GENERATE_ASYMMETRIC_KEYPAIR && !DEF_EXT_APDU) {
                 ISOException.throwIt(ISO7816.SW_COMMAND_CHAINING_NOT_SUPPORTED);
             }
-        }
-        /*
-         * Be sure that the last chain had been completed:
-         *		- If we are in the middle of a chain, the ins had been set and should match.
-         *		- A chain may start, or no chaining may happen when the ins is zero.
-         */
-        if(ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_INS] != 0
-                && ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_INS] != ins) {
-            ISOException.throwIt(SW_COMMAND_NOT_ALLOWED_GENERAL);
-        }
 
+            if(ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_INS] == 0
+                    && ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_P1P2] == 0) {
+                /* A new chain is starting - set the current INS and P1P2. */
+                if(ins == 0) {
+                    ISOException.throwIt(ISO7816.SW_INS_NOT_SUPPORTED);
+                }
+                ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_INS] = ins;
+                ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_P1P2] = p1p2;
+            } else if(ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_INS] != ins
+                      || ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_P1P2] != p1p2) {
+                /* The current chain is not yet completed,
+                 * but an apdu not part of the chain had been received. */
+                ISOException.throwIt(SW_COMMAND_NOT_ALLOWED_GENERAL);
+            } else if(!isCommandChainingCLA(apdu)) {
+                /* A chain is ending, set the current INS and P1P2 to zero to indicate that. */
+                ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_INS] = 0;
+                ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_P1P2] = 0;
+            }
+        }
 
         if(apdu.isISOInterindustryCLA()) {
             switch (ins) {
@@ -747,7 +758,6 @@ public class IsoApplet extends Applet implements ExtendedLength {
 
             Util.arrayFillNonAtomic(ram_buf, (short)0, RAM_BUF_SIZE, (byte)0x00);
             ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_POS] = 0;
-            ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_INS] = 0;
 
             // Return pubkey. See ISO7816-8 table 3.
             sendECPublicKey(apdu, pubKey);
@@ -1507,9 +1517,6 @@ public class IsoApplet extends Applet implements ExtendedLength {
         }
 
         if(isCommandChainingCLA(apdu)) {
-            // We are currently executing a chain with a particular INS.
-            ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_INS] = buf[ISO7816.OFFSET_INS];
-
             // We are still in the middle of a chain, otherwise there would not have been a chaining CLA.
             // Make sure the caller does not forget to return as the data should only be interpreted
             // when the chain is completed (when using this method).
@@ -1518,8 +1525,6 @@ public class IsoApplet extends Applet implements ExtendedLength {
         } else {
             // Chain has ended or no chaining.
             // We did receive the data, everything is fine.
-            // Set the current chaining INS to zero so that a new chain may be started.
-            ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_INS] = 0;
             // Reset the current position in ram_buf.
             recvLen = (short) (recvLen + ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_POS]);
             ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_POS] = 0;
@@ -1550,7 +1555,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
      * \param bLen The length of the data in buf.
      *
      * \throw ISOException SW_CONDITION_NOT_SATISFIED, SW_DATA_INVALID, SW_FUNC_NOT_SUPPORTED,
-	 * 			SW_UNKNOWN.
+     * 			SW_UNKNOWN.
      */
     private void importRSAkey(byte[] buf, short bOff, short bLen) throws ISOException {
         short pos, len;
