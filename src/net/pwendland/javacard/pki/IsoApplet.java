@@ -97,6 +97,12 @@ public class IsoApplet extends Applet implements ExtendedLength {
     private static final byte ALG_GEN_EC = (byte) 0xEC;
     private static final byte ALG_ECDSA_SHA1 = (byte) 0x21;
 
+    private static final short LENGTH_EC_FP_224 = 224;
+    private static final short LENGTH_EC_FP_256 = 256;
+    private static final short LENGTH_EC_FP_320 = 320;
+    private static final short LENGTH_EC_FP_384 = 384;
+    private static final short LENGTH_EC_FP_521 = 521;
+
     /* Card/Applet lifecycle states */
     private static final byte STATE_CREATION = (byte) 0x00; // No restrictions, PUK not set yet.
     private static final byte STATE_INITIALISATION = (byte) 0x01; // PUK set, PIN not set yet. PUK may not be changed.
@@ -730,15 +736,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
                 ISOException.throwIt(ISO7816.SW_DATA_INVALID);
             }
             // Try to calculate field length frome prime length.
-            short field_len = (short)(len * 8);
-            if(field_len != (short)192
-                    && field_len != (short) 224
-                    && field_len != (short) 256
-                    && field_len != (short) 320
-                    && field_len != (short) 384
-                    && field_len != (short) 512) {
-                ISOException.throwIt(ISO7816.SW_FUNC_NOT_SUPPORTED);
-            }
+            short field_len = getEcFpFieldLength(len);
 
             // Try to instantiate key objects of that length
             try {
@@ -914,14 +912,15 @@ public class IsoApplet extends Applet implements ExtendedLength {
         short pos = 0;
         short lengthPos = 0;
         short outer_value_len;
+        short field_bytes = (key.getSize()%8 == 0) ? (short)(key.getSize()/8) : (short)(key.getSize()/8+1);
 
         // Return pubkey. See ISO7816-8 table 3.
         buf[pos++] = (byte) 0x7F;
         buf[pos++] = (byte) 0x49;
 
         outer_value_len = (short)(7 // We have: 7 tags,
-                                  + (key.getSize() == 512 ? 9 : 7) // 7 length fields, of which 2 are 2 byte fields when using 512 bit curves,
-                                  + (short)(8 * (short)(key.getSize()/8)) + 4); // 4 * field_len + 2 * 2 field_len + cofactor (2 bytes) + 2 * uncompressed tag
+                                  + (key.getSize() == LENGTH_EC_FP_521 ? 9 : 7) // 7 length fields, of which 2 are 2 byte fields when using 521 bit curves,
+                                  + 8 * field_bytes + 4); // 4 * field_len + 2 * 2 field_len + cofactor (2 bytes) + 2 * uncompressed tag
         if(UtilTLV.getLengthFieldLength(outer_value_len) == 2) {
             buf[pos++] = (byte) 0x81; // Length field: 2 bytes.
             buf[pos++] = (byte) outer_value_len; // Length will be 218 bytes.
@@ -967,8 +966,8 @@ public class IsoApplet extends Applet implements ExtendedLength {
         Util.setShort(buf, pos, key.getK());
         pos+=2;
 
-        if((key.getSize() > (short) 192 && DEF_EXT_APDU)
-                || key.getSize() <= (short)192) {
+        if((key.getSize() > KeyBuilder.LENGTH_EC_FP_192 && DEF_EXT_APDU)
+                || key.getSize() <= KeyBuilder.LENGTH_EC_FP_192) {
             // Data fits in a extended or short APDU.
             // Public key - "PP"
             buf[pos++] = (byte) 0x86;
@@ -999,9 +998,13 @@ public class IsoApplet extends Applet implements ExtendedLength {
 
             ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_BYTES_REMAINING] = pos;
             ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_POS] = (short) 0;
-            ISOException.throwIt((short) (ISO7816.SW_BYTES_REMAINING_00
-                                          | (short)((short)0x00FF & ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_BYTES_REMAINING]) )
-                                );
+            short bytesRemaining;
+            if(ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_BYTES_REMAINING] > 255) {
+                bytesRemaining = 0x00FF;
+            } else {
+                bytesRemaining = ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_BYTES_REMAINING];
+            }
+            ISOException.throwIt( (short)(ISO7816.SW_BYTES_REMAINING_00 | bytesRemaining) );
             // The second part of the data is now in ram_buf, metadata is in ram_chaining_cache.
             // It can be fetched by the host via GET RESPONSE.
         }
@@ -1641,6 +1644,34 @@ public class IsoApplet extends Applet implements ExtendedLength {
     }
 
     /**
+     * \brief Get the field length of an EC FP key using the amount of bytes
+     * 			of a parameter (e.g. the prime).
+     *
+     * \return The bit length of the field.
+     *
+     * \throw ISOException SC_FUNC_NOT_SUPPORTED.
+     */
+    private short getEcFpFieldLength(short bytes) {
+        switch(bytes) {
+        case 24:
+            return KeyBuilder.LENGTH_EC_FP_192;
+        case 28:
+            return LENGTH_EC_FP_224;
+        case 32:
+            return LENGTH_EC_FP_256;
+        case 40:
+            return LENGTH_EC_FP_320;
+        case 48:
+            return LENGTH_EC_FP_384;
+        case 66:
+            return LENGTH_EC_FP_521;
+        default:
+            ISOException.throwIt(ISO7816.SW_FUNC_NOT_SUPPORTED);
+            return 0;
+        }
+    }
+
+    /**
      * \brief Instatiate and initialize the current private (EC) key.
      *
      * A MANAGE SECURITY ENVIRONMENT must have preceeded, setting the current
@@ -1679,18 +1710,9 @@ public class IsoApplet extends Applet implements ExtendedLength {
             ISOException.throwIt(ISO7816.SW_DATA_INVALID);
         }
         // Try to calculate field length frome prime length.
-        field_len = (short)(len * 8);
-        if(field_len != (short) 192
-                && field_len != (short) 224
-                && field_len != (short) 256
-                && field_len != (short) 320
-                && field_len != (short) 384
-                && field_len != (short) 512) {
-            ISOException.throwIt(ISO7816.SW_FUNC_NOT_SUPPORTED);
-        }
+        field_len = getEcFpFieldLength(len);
 
         // Try to instantiate key objects of that length
-
         try {
             ecPrKey = (ECPrivateKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PRIVATE, field_len, false);
         } catch(CryptoException e) {
