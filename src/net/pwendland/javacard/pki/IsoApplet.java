@@ -1659,12 +1659,18 @@ public class IsoApplet extends Applet implements ExtendedLength {
      *
      * A MANAGE SECURITY ENVIRONMENT must have preceeded, setting the current
      * algorithm reference to ALG_GEN_EC.
-     * This method updates creates a new instance of the current private key,
-     * depending on the current algorithn reference.
+     * This method creates a new instance of the current private key.
      *
-     * \param buf The buffer containing the EC point Q. It must be TLV-encoded,
-     *			the tag must be 0xC1. Note: This buffer will be filled with 0x00
-     *			after the operation had been performed.
+     * \param buf The buffer containing the private key. It must be a sequence of
+     * 			the following TLV-encoded entries:
+     * 				81 - prime
+     * 				82 - coefficient A
+     * 				83 - coefficient B
+     * 				84 - base point G
+     * 				85 - order
+     * 				87 - cofactor
+     * 				88 - private D
+     * 			Note: This buffer will be filled with 0x00 after the operation had been performed.
      *
      * \param bOff The offset at which the data in buf starts.
      *
@@ -1672,7 +1678,6 @@ public class IsoApplet extends Applet implements ExtendedLength {
      *
      * \throw ISOException SW_CONDITION_NOT_SATISFIED, SW_DATA_INVALID,
      *						SW_FUNC_NOT_SUPPORTED.
-     *
      */
     private void importECkey(byte[] buf, short bOff, short bLen) {
         short pos, len, field_len;
@@ -1682,7 +1687,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
             ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
         }
 
-        /* Search for prime */
+        // Search for prime
         pos = UtilTLV.findTag(buf, bOff, bLen, (byte) 0x81);
         if(pos < 0) {
             ISOException.throwIt(ISO7816.SW_DATA_INVALID);
@@ -1707,7 +1712,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
         }
         initEcParams(buf, bOff, bLen, ecPrKey);
 
-        /* Set the private component "private D" */
+        // Set the private component "private D"
         pos = UtilTLV.findTag(buf, bOff, bLen, (byte)0x88);
         pos++;
         len = UtilTLV.decodeLengthField(buf, pos);
