@@ -146,4 +146,64 @@ public class UtilTLV {
         }
     }
 
+    /**
+     * \brief Write the tag and length to a buffer.
+     *
+     * Only the tag and length field are written. The writing of the value field is left to the caller.
+     *
+     * \param tag A one- or two-byte tag.
+     *
+     * \param len The length that should be written to the length field.
+     *
+     * \param out The buffer to write the result to.
+     *
+     * \param outLen The length of out.
+     *
+     * \param outOffset The offset at which to start writing the tag.
+     *
+     * \return -1 in case of an error, or the length that was written.
+     */
+    public static short writeTagAndLen(short tag, short len, byte[] out, short outOffset) {
+        byte tagLen;
+        short pos = outOffset;
+        short outLen = (short)out.length;
+
+        if((short)(tag & (short)0xFF00) != 0) {
+            if((short)(tag & (short)0x1F00) != (short)0x1F00) {
+                /* Missing escape marker */
+                return -1;
+            }
+            tagLen = 2;
+        } else {
+            tagLen = 1;
+        }
+
+        if(len < 0) {
+            return -1;
+        }
+        if((short)(tagLen + getLengthFieldLength(len)) > (short)(outLen - outOffset)) {
+            return -1;
+        }
+
+        if(tagLen == 1) {
+            out[pos] = (byte)(tag & (short)0x00FF);
+        } else {
+            Util.setShort(out, pos, tag);
+        }
+        pos += tagLen;
+
+        if(len < 128) {
+            out[pos++] = (byte)(len & (short)0x007F);
+        } else if(len < 256) {
+            out[pos++] = (byte)0x81;
+            out[pos++] = (byte)(len & (short)0x00FF);
+        } else {
+            out[pos++] = (byte)0x82;
+            Util.setShort(out, pos, len);
+            pos += 2;
+        }
+
+        return (short)(pos - outOffset);
+    }
+
 }

@@ -912,97 +912,136 @@ public class IsoApplet extends Applet implements ExtendedLength {
      * \param The apdu to answer. setOutgoing() must not be called already.
      */
     private void sendECPublicKey(APDU apdu, ECPublicKey key) {
-        byte[] buf = apdu.getBuffer();
-        short le = apdu.setOutgoing();
         short pos = 0;
-        short lengthPos = 0;
-        short outer_value_len;
         short field_bytes = (key.getSize()%8 == 0) ? (short)(key.getSize()/8) : (short)(key.getSize()/8+1);
+        short r, len;
 
         // Return pubkey. See ISO7816-8 table 3.
-        buf[pos++] = (byte) 0x7F;
-        buf[pos++] = (byte) 0x49;
-
-        outer_value_len = (short)(7 // We have: 7 tags,
-                                  + (key.getSize() == LENGTH_EC_FP_521 ? 9 : 7) // 7 length fields, of which 2 are 2 byte fields when using 521 bit curves,
-                                  + 8 * field_bytes + 4); // 4 * field_len + 2 * 2 field_len + cofactor (2 bytes) + 2 * uncompressed tag
-        if(UtilTLV.getLengthFieldLength(outer_value_len) == 2) {
-            buf[pos++] = (byte) 0x81; // Length field: 2 bytes.
-            buf[pos++] = (byte) outer_value_len; // Length will be 218 bytes.
+        len = (short)(7 // We have: 7 tags,
+                      + (key.getSize() == LENGTH_EC_FP_521 ? 9 : 7) // 7 length fields, of which 2 are 2 byte fields when using 521 bit curves,
+                      + 8 * field_bytes + 4); // 4 * field_len + 2 * 2 field_len + cofactor (2 bytes) + 2 * uncompressed tag
+        r = UtilTLV.writeTagAndLen((short)0x7F49, len, ram_buf, pos);
+        if(r > 0) {
+            pos += r;
         } else {
-            buf[pos++] = (byte) 0x82; // Length field: 3 bytes.
-            Util.setShort(buf, pos, outer_value_len);
-            pos += 2;
+            ISOException.throwIt(ISO7816.SW_UNKNOWN);
         }
 
         // Prime - "P"
-        buf[pos++] = (byte) 0x81; // Tag
-        lengthPos = pos++; // Write the length later - we don't know it now.
-        buf[lengthPos] = (byte) key.getField(buf, pos); // Length + Value
-        pos += buf[lengthPos];
+        len = field_bytes;
+        r = UtilTLV.writeTagAndLen((short)0x81, len, ram_buf, pos);
+        if(r > 0) {
+            pos += r;
+        } else {
+            ISOException.throwIt(ISO7816.SW_UNKNOWN);
+        }
+        r = key.getField(ram_buf, pos);
+        if(r == len) {
+            pos += len;
+        } else {
+            ISOException.throwIt(ISO7816.SW_UNKNOWN);
+        }
 
         // First coefficient - "A"
-        buf[pos++] = (byte) 0x82;
-        lengthPos = pos++;
-        buf[lengthPos] = (byte) key.getA(buf, pos);
-        pos += buf[lengthPos];
+        len = field_bytes;
+        r = UtilTLV.writeTagAndLen((short)0x82, len, ram_buf, pos);
+        if(r > 0) {
+            pos += r;
+        } else {
+            ISOException.throwIt(ISO7816.SW_UNKNOWN);
+        }
+        r = key.getA(ram_buf, pos);
+        if(r == len) {
+            pos += len;
+        } else {
+            ISOException.throwIt(ISO7816.SW_UNKNOWN);
+        }
 
         // Second coefficient - "B"
-        buf[pos++] = (byte) 0x83;
-        lengthPos = pos++;
-        buf[lengthPos] = (byte) key.getB(buf, pos);
-        pos += buf[lengthPos];
+        len = field_bytes;
+        r = UtilTLV.writeTagAndLen((short)0x83, len, ram_buf, pos);
+        if(r > 0) {
+            pos += r;
+        } else {
+            ISOException.throwIt(ISO7816.SW_UNKNOWN);
+        }
+        r = key.getB(ram_buf, pos);
+        if(r == len) {
+            pos += len;
+        } else {
+            ISOException.throwIt(ISO7816.SW_UNKNOWN);
+        }
 
         // Generator - "PB"
-        buf[pos++] = (byte) 0x84;
-        lengthPos = pos++;
-        buf[lengthPos] = (byte) key.getG(buf, pos);
-        pos += buf[lengthPos];
+        len = (short)(1 + 2 * field_bytes);
+        r = UtilTLV.writeTagAndLen((short)0x84, len, ram_buf, pos);
+        if(r > 0) {
+            pos += r;
+        } else {
+            ISOException.throwIt(ISO7816.SW_UNKNOWN);
+        }
+        r = key.getG(ram_buf, pos);
+        if(r == len) {
+            pos += len;
+        } else {
+            ISOException.throwIt(ISO7816.SW_UNKNOWN);
+        }
 
         // Order - "Q"
-        buf[pos++] = (byte) 0x85;
-        lengthPos = pos++;
-        buf[lengthPos]  = (byte) key.getR(buf, pos);
-        pos += buf[lengthPos];
+        len = field_bytes;
+        r = UtilTLV.writeTagAndLen((short)0x85, len, ram_buf, pos);
+        if(r > 0) {
+            pos += r;
+        } else {
+            ISOException.throwIt(ISO7816.SW_UNKNOWN);
+        }
+        r = key.getR(ram_buf, pos);
+        if(r == len) {
+            pos += len;
+        } else {
+            ISOException.throwIt(ISO7816.SW_UNKNOWN);
+        }
+
+        // Public key - "PP"
+        len = (short)(1 + 2 * field_bytes);
+        r = UtilTLV.writeTagAndLen((short)0x86, len, ram_buf, pos);
+        if(r > 0) {
+            pos += r;
+        } else {
+            ISOException.throwIt(ISO7816.SW_UNKNOWN);
+        }
+        r = key.getW(ram_buf, pos);
+        if(r == len) {
+            pos += len;
+        } else {
+            ISOException.throwIt(ISO7816.SW_UNKNOWN);
+        }
 
         // Cofactor
-        buf[pos++] = (byte) 0x87;
-        buf[pos++] = (byte) 0x02;
-        Util.setShort(buf, pos, key.getK());
+        r = UtilTLV.writeTagAndLen((short)0x87, (short)2, ram_buf, pos);
+        if(r > 0) {
+            pos += r;
+        } else {
+            ISOException.throwIt(ISO7816.SW_UNKNOWN);
+        }
+        Util.setShort(ram_buf, pos, key.getK());
         pos+=2;
 
-        if((key.getSize() > KeyBuilder.LENGTH_EC_FP_192 && DEF_EXT_APDU)
-                || key.getSize() <= KeyBuilder.LENGTH_EC_FP_192) {
-            // Data fits in a extended or short APDU.
-            // Public key - "PP"
-            buf[pos++] = (byte) 0x86;
-            lengthPos = pos++;
-            buf[lengthPos] = (byte) key.getW(buf, pos);
-            pos += buf[lengthPos];
-
-            apdu.setOutgoingLength(pos);
-            apdu.sendBytes((short) 0, pos);
+        // ram_buf now contains the complete public key.
+        if(pos <= 256 || DEF_EXT_APDU) {
+            len = pos;
         } else {
-            // No extended APDUs and >192 bit field length - we have 284 bytes to send for 256 bit length.
-            // Send the EC public point with the second APDU.
-            // Send the first part, prepare ram_buf and make the caller use GET RESPONSE.
+            len = 256;
+        }
+        apdu.setOutgoing();
+        apdu.setOutgoingLength(len);
+        apdu.sendBytesLong(ram_buf, (short)0, len);
 
-            if(ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_BYTES_REMAINING] > (short) 0) {
-                // Should not happen - there is old content to get with GET RESPONSE
-                ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
-            }
-
-            apdu.setOutgoingLength(pos);
-            apdu.sendBytes((short) 0, pos);
-
-            pos = (short) 0;
-            ram_buf[pos++] = (byte) 0x86;
-            lengthPos = pos++;
-            ram_buf[lengthPos] = (byte) key.getW(ram_buf, pos);
-            pos += ram_buf[lengthPos];
-
-            ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_BYTES_REMAINING] = pos;
-            ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_POS] = (short) 0;
+        if(len < pos) {
+            // The data did not fit in a short apdu and no extended apdus are supported.
+            // Prepare GET RESPONSE.
+            ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_BYTES_REMAINING] = (short)(pos - len);
+            ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_POS] = len;
             short bytesRemaining;
             if(ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_BYTES_REMAINING] > 255) {
                 bytesRemaining = 0x00FF;
@@ -1013,7 +1052,6 @@ public class IsoApplet extends Applet implements ExtendedLength {
             // The second part of the data is now in ram_buf, metadata is in ram_chaining_cache.
             // It can be fetched by the host via GET RESPONSE.
         }
-
     }
 
     /**
