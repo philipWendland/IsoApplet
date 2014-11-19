@@ -269,6 +269,11 @@ public class IsoApplet extends Applet implements ExtendedLength {
             }
         }
 
+        // If the card expects a GET RESPONSE, no other operation should be requested.
+        if(ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_BYTES_REMAINING] > 0 && ins != INS_GET_RESPONSE) {
+            ISOException.throwIt(SW_COMMAND_NOT_ALLOWED_GENERAL);
+        }
+
         if(apdu.isISOInterindustryCLA()) {
             switch (ins) {
             case ISO7816.INS_SELECT:
