@@ -54,7 +54,7 @@ import javacard.security.Signature;
 public class IsoApplet extends Applet implements ExtendedLength {
     /* API Version */
     public static final byte API_VERSION_MAJOR = (byte) 0x00;
-    public static final byte API_VERSION_MINOR = (byte) 0x04;
+    public static final byte API_VERSION_MINOR = (byte) 0x05;
 
     /* Card-specific configuration */
     public static final boolean DEF_EXT_APDU = false;
@@ -112,7 +112,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
     //		- DECIPHER (RSA 2048 bit).
     //		- GENERATE ASYMMETRIC KEYPAIR: ECC curve parameters if large (> 256 bit) prime fields are used.
     //		- PUT DATA: RSA and ECC private key import.
-    private static final short RAM_BUF_SIZE = (short) 510;
+    private static final short RAM_BUF_SIZE = (short) 660;
     // "ram_chaining_cache" is used for:
     //		- Caching of the amount of bytes remainung.
     //		- Caching of the current send position.
@@ -1414,88 +1414,47 @@ public class IsoApplet extends Applet implements ExtendedLength {
      * \throw ISOException SW_SECURITY_STATUS_NOT_SATISFIED, SW_DATA_INVALID, SW_WRONG_LENGTH.
      */
     private void importPrivateKey(APDU apdu) throws ISOException {
-        byte[] buf = apdu.getBuffer();
-        short offset_cdata;
-        short lc, recvLen;
+        short recvLen;
+        short offset, len;
 
         if( ! pin.isValidated() ) {
             ISOException.throwIt(ISO7816.SW_SECURITY_STATUS_NOT_SATISFIED);
         }
 
-        if(currentAlgorithmRef[0] == ALG_GEN_RSA_2048) {
+        switch(currentAlgorithmRef[0]) {
+        case ALG_GEN_RSA_2048:
             // RSA key import.
-            recvLen = apdu.setIncomingAndReceive();
-            lc = apdu.getIncomingLength();
-            offset_cdata = apdu.getOffsetCdata();
-            if(lc != recvLen) {
-                ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
-            }
-            if(isCommandChainingCLA(apdu)) {
-                if(ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_BYTES_REMAINING] == (short) 0) {
-                    /*
-                     * First part of the chain.
-                     */
-
-                    short total_len, offset;
-                    RSAPrivateCrtKey rsaPrKey;
-
-                    if(buf[offset_cdata] != (byte)0x7F && buf[(short)(offset_cdata+1)] != (byte)0x48) {
-                        ISOException.throwIt(ISO7816.SW_DATA_INVALID);
-                    }
-                    offset = (short)(offset_cdata+2);
-                    total_len = UtilTLV.decodeLengthField(buf, offset);
-                    short current_len = (short)(lc - 2 - UtilTLV.getLengthFieldLength(total_len));
-                    // Skip the outer lenth field tag.
-                    offset += UtilTLV.getLengthFieldLength(total_len);
-
-                    // Total amount of bytes remaining: total length - contents part of the first apdu.
-                    ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_POS] = current_len;
-                    ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_BYTES_REMAINING] = (short)(total_len - current_len);
-
-                    try {
-                        rsaPrKey = (RSAPrivateCrtKey) KeyBuilder.buildKey(KeyBuilder.TYPE_RSA_CRT_PRIVATE, KeyBuilder.LENGTH_RSA_2048, false);
-                    } catch(CryptoException e) {
-                        if(e.getReason() == CryptoException.NO_SUCH_ALGORITHM) {
-                            ISOException.throwIt(ISO7816.SW_FUNC_NOT_SUPPORTED);
-                        }
-                        ISOException.throwIt(ISO7816.SW_UNKNOWN);
-                        return;
-                    }
-                    keys[currentPrivateKeyRef[0]] = rsaPrKey;
-                    updateCurrentRSACrtKeyField(buf, offset, current_len);
-
-                } else {
-                    /*
-                     * [2;last[ part of the chain.
-                     */
-
-                    updateCurrentRSACrtKeyField(buf, offset_cdata, lc);
-                    ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_POS] += lc;
-                    ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_BYTES_REMAINING] -= lc;
-                }
-            } else {
-                /*
-                 * Last part of the chain.
-                 */
-
-                updateCurrentRSACrtKeyField(buf, offset_cdata, lc);
-                ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_POS] += lc;
-                ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_BYTES_REMAINING] -= lc;
-
-                if(ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_BYTES_REMAINING] != 0) {
-                    ISOException.throwIt(ISO7816.SW_DATA_INVALID);
-                }
-                if( ! ((RSAPrivateCrtKey)keys[currentPrivateKeyRef[0]]).isInitialized() ) {
-                    keys[currentPrivateKeyRef[0]] = null;
-                    ISOException.throwIt(ISO7816.SW_WRONG_DATA);
-                }
-            }
-        } else if (currentAlgorithmRef[0] == ALG_GEN_EC) {
-            short offset = 0;
-            short len;
 
             // This ensures that all the data is located in ram_buf, beginning at zero.
             recvLen = doChainingOrExtAPDU(apdu);
+            offset = 0;
+
+            // Parse the outer tag.
+            if(ram_buf[offset] != (byte)0x7F && ram_buf[offset] != (byte)0x48) {
+                ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+            }
+            offset += 2;
+            len = UtilTLV.decodeLengthField(ram_buf, offset);
+            if(len < (short)0) {
+                ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+            }
+            offset += UtilTLV.getLengthFieldLength(len);
+            if(len != (short)(recvLen - offset)) {
+                ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+            }
+            if( ! UtilTLV.isTLVconsistent(ram_buf, offset, len) )	{
+                ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+            }
+            // Import the key from the value field of the outer tag.
+            importRSAkey(ram_buf, offset, len);
+            break;
+
+        case ALG_GEN_EC:
+            // EC key import.
+
+            // This ensures that all the data is located in ram_buf, beginning at zero.
+            recvLen = doChainingOrExtAPDU(apdu);
+            offset = 0;
 
             // Parse the outer tag.
             if( ram_buf[offset++] != (byte) 0xE0 ) {
@@ -1514,7 +1473,8 @@ public class IsoApplet extends Applet implements ExtendedLength {
             }
             // Import the key from the value field of the outer tag.
             importECkey(ram_buf, offset, len);
-        } else {
+            break;
+        default:
             ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
         }
     }
@@ -1572,8 +1532,8 @@ public class IsoApplet extends Applet implements ExtendedLength {
      *
      * A MANAGE SECURITY ENVIRONMENT must have preceeded, setting the current
      * algorithm reference to ALG_GEN_RSA_2048.
-     * This method updates ONE field of the private key. The current private key
-     * must be a RSAPrivateCrtKey.
+     * This method updates creates a new instance of the current private key,
+     * depending on the current algorithn reference.
      *
      * \param buf The buffer containing the information to update the private key
      *			field with. The format must be TLV-encoded with the tags:
@@ -1589,62 +1549,97 @@ public class IsoApplet extends Applet implements ExtendedLength {
      *
      * \param bLen The length of the data in buf.
      *
-     * \throw ISOException SW_CONDITION_NOT_SATISFIED, SW_DATA_INVALID.
+     * \throw ISOException SW_CONDITION_NOT_SATISFIED, SW_DATA_INVALID, SW_FUNC_NOT_SUPPORTED,
+	 * 			SW_UNKNOWN.
      */
-    private void updateCurrentRSACrtKeyField(byte[] buf, short bOff, short bLen) throws ISOException {
-        short pos, len, l_len;
+    private void importRSAkey(byte[] buf, short bOff, short bLen) throws ISOException {
+        short pos, len;
         RSAPrivateCrtKey rsaPrKey = null;
 
         if(currentAlgorithmRef[0] != ALG_GEN_RSA_2048) {
             ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
         }
 
-        rsaPrKey = (RSAPrivateCrtKey) keys[currentPrivateKeyRef[0]];
+        try {
+            rsaPrKey = (RSAPrivateCrtKey) KeyBuilder.buildKey(KeyBuilder.TYPE_RSA_CRT_PRIVATE, KeyBuilder.LENGTH_RSA_2048, false);
+        } catch(CryptoException e) {
+            if(e.getReason() == CryptoException.NO_SUCH_ALGORITHM) {
+                ISOException.throwIt(ISO7816.SW_FUNC_NOT_SUPPORTED);
+            }
+            ISOException.throwIt(ISO7816.SW_UNKNOWN);
+            return;
+        }
 
         if( ! UtilTLV.isTLVconsistent(buf, bOff, bLen)) {
             ISOException.throwIt(ISO7816.SW_DATA_INVALID);
         }
-        pos = bOff;
-        len = UtilTLV.decodeLengthField(buf, (short)(pos+1));
-        l_len = UtilTLV.getLengthFieldLength(len);
-        if(l_len < 0) {
-            ISOException.throwIt(ISO7816.SW_DATA_INVALID);
-        }
-        pos += 1+l_len;
 
-        switch(buf[bOff]) {
-        case (byte) 0x92:
-            // Tag 92 - P
-            rsaPrKey.setP(buf, pos, len);
-            break;
-        case (byte) 0x93:
-            // Tag 93 - Q
-            rsaPrKey.setQ(buf, pos, len);
-            break;
-        case (byte) 0x94:
-            // Tag 94 - PQ (1/q mod p)
-            rsaPrKey.setPQ(buf, pos, len);
-            break;
-        case (byte) 0x95:
-            // Tag 95 - DP1 (d mod (p-1))
-            rsaPrKey.setDP1(buf, pos, len);
-            break;
-        case (byte) 0x96:
-            // Tag 96 - DQ1 (d mod (q-1))
-            rsaPrKey.setDQ1(buf, pos, len);
-            break;
-        default:
+        /* Set P */
+        pos = UtilTLV.findTag(buf, bOff, bLen, (byte)0x92);
+        pos++;
+        len = UtilTLV.decodeLengthField(buf, pos);
+        if(len < 0) {
             ISOException.throwIt(ISO7816.SW_DATA_INVALID);
         }
-        // We don't want any part of the private key to remain in the buffer.
-        Util.arrayFillNonAtomic(buf, bOff, bLen, (byte) 0x00);
+        pos += UtilTLV.getLengthFieldLength(len);
+        rsaPrKey.setP(buf, pos, len);
+
+        /* Set Q */
+        pos = UtilTLV.findTag(buf, bOff, bLen, (byte)0x93);
+        pos++;
+        len = UtilTLV.decodeLengthField(buf, pos);
+        if(len < 0) {
+            ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+        }
+        pos += UtilTLV.getLengthFieldLength(len);
+        rsaPrKey.setQ(buf, pos, len);
+
+        /* Set PQ (1/q mod p) */
+        pos = UtilTLV.findTag(buf, bOff, bLen, (byte)0x94);
+        pos++;
+        len = UtilTLV.decodeLengthField(buf, pos);
+        if(len < 0) {
+            ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+        }
+        pos += UtilTLV.getLengthFieldLength(len);
+        rsaPrKey.setPQ(buf, pos, len);
+
+        /* Set DP1 (d mod (p-1)) */
+        pos = UtilTLV.findTag(buf, bOff, bLen, (byte)0x95);
+        pos++;
+        len = UtilTLV.decodeLengthField(buf, pos);
+        if(len < 0) {
+            ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+        }
+        pos += UtilTLV.getLengthFieldLength(len);
+        rsaPrKey.setDP1(buf, pos, len);
+
+        /* Set DQ1 (d mod (q-1)) */
+        pos = UtilTLV.findTag(buf, bOff, bLen, (byte)0x96);
+        pos++;
+        len = UtilTLV.decodeLengthField(buf, pos);
+        if(len < 0) {
+            ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+        }
+        pos += UtilTLV.getLengthFieldLength(len);
+        rsaPrKey.setDQ1(buf, pos, len);
+
+        if(rsaPrKey.isInitialized()) {
+            // If the key is usable, it MUST NOT remain in buf.
+            JCSystem.beginTransaction();
+            Util.arrayFillNonAtomic(buf, bOff, bLen, (byte)0x00);
+            keys[currentPrivateKeyRef[0]] = rsaPrKey;
+            JCSystem.commitTransaction();
+        } else {
+            ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+        }
     }
 
     /**
      * \brief Instatiate and initialize the current private (EC) key.
      *
      * A MANAGE SECURITY ENVIRONMENT must have preceeded, setting the current
-     * algorithm reference to ALG_GEN_EC_*.
+     * algorithm reference to ALG_GEN_EC.
      * This method updates creates a new instance of the current private key,
      * depending on the current algorithn reference.
      *
