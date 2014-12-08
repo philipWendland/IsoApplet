@@ -80,7 +80,7 @@
 	 <!-- Create package-->
 		<convert
 			dir="${classes}"
-			Configfile="${src}/net/pwendland/javacard/pki/IsoApplet.opt">
+			Configfile="${src}/net/pwendland/javacard/pki/isoapplet/IsoApplet.opt">
 			<classpath refid="classpath"/>
     	</convert> 
 	</target>

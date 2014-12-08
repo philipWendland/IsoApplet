@@ -17,34 +17,36 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA
  */
 
-package net.pwendland.javacard.pki;
+package net.pwendland.javacard.pki.isoapplet;
 
 /**
- * \brief A Record.
+ * \brief The FileNotFoundException class.
  *
- * This class is necessary because multidimensional arrays are not supported by the JCVM.
+ * Should be thrown whenever a specified file could not be found.
+ * This class is a singleton in order to save resources.
+ *
+ * \attention This singleton is not thread-safe.
  */
-public class Record {
-    byte[] data;
+public class FileNotFoundException extends Exception {
+    public static FileNotFoundException instance;
 
     /**
-     * \brief Constructor.
-     *
-     * \param data The byte array to store. No copy is made.
+     * \brief Private access constructor (Singleton pattern).
      */
-    Record(byte[] data) {
-        this.data = data;
+    private FileNotFoundException() {
+
     }
 
     /**
-     * \brief Constructor.
+     * \brief Get the instance.
      *
-     * A new byte array is being allocated. Use the data-field to fill it up with data.
-     *
-     * \param size The size of the data array.
+     * \return The FileNotFoundException instance.
      */
-    Record(short size) {
-        this.data = new byte[size];
+    public static FileNotFoundException getInstance() {
+        if(instance == null) {
+            instance = new FileNotFoundException();
+        }
+        return instance;
     }
+
 }
-
