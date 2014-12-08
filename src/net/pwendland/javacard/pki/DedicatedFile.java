@@ -1,5 +1,5 @@
 /*
- * IsoApplet: A Java Card PKI applet aimiing for ISO 7816 compliance.
+ * IsoApplet: A Java Card PKI applet aiming for ISO 7816 compliance.
  * Copyright (C) 2014  Philip Wendland (wendlandphilip@gmail.com)
  *
  * This program is free software; you can redistribute it and/or modify

@@ -58,7 +58,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
 
     /* Card-specific configuration */
     public static final boolean DEF_EXT_APDU = false;
-    public static final boolean DEF_PRIVATE_KEY_IMPORT_ALLOWED = false;
+    public static final boolean DEF_PRIVATE_KEY_IMPORT_ALLOWED = true;
 
     /* ISO constants not in the "ISO7816" interface */
     // File system related INS:
@@ -210,7 +210,6 @@ public class IsoApplet extends Applet implements ExtendedLength {
      */
     public void process(APDU apdu) {
         byte buffer[] = apdu.getBuffer();
-        byte cla = buffer[ISO7816.OFFSET_CLA];
         byte ins = buffer[ISO7816.OFFSET_INS];
 
         // Return the API version if we are being selected.
@@ -1328,7 +1327,6 @@ public class IsoApplet extends Applet implements ExtendedLength {
         byte[] buf = apdu.getBuffer();
         short offset_cdata;
         short lc;
-        short le;
         short sigLen = 0;
 
         // Receive.
@@ -1527,7 +1525,6 @@ public class IsoApplet extends Applet implements ExtendedLength {
     private short doChainingOrExtAPDU(APDU apdu) throws ISOException {
         byte[] buf = apdu.getBuffer();
         short recvLen = apdu.setIncomingAndReceive();
-        short lc = apdu.getIncomingLength();
         short offset_cdata = apdu.getOffsetCdata();
 
         // Receive data (short or extended).

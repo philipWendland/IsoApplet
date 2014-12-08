@@ -899,9 +899,6 @@ public class IsoFileSystem extends DedicatedFile {
         short lc;
         short offset_cdata;
 
-        short fileID;
-        short pos;
-
         // Only P1P2 = 0000 supported.
         // (File identifier and parameters must be encoded in the command data field.)
         if( p1 != 0x00 || p2 != 0x00 ) {
