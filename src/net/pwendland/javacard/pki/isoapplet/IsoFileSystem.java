@@ -100,7 +100,7 @@ public class IsoFileSystem extends DedicatedFile {
      * \throw FileNotFoundException If the specified file was not found or was of the wrong type.
      */
     public void setCurrentlySelectedDF(short fileID) throws FileNotFoundException {
-        selectFile( (DedicatedFile) findFile(fileID, SPECIFY_DF) );
+        selectFile( findFile(fileID, SPECIFY_DF) );
         return;
     }
 
@@ -121,7 +121,7 @@ public class IsoFileSystem extends DedicatedFile {
      * \throw FileNotFoundException If the specified file was not found or was of the wrong type.
      */
     public void setCurrentlyselectedEF(short fileID) throws FileNotFoundException {
-        selectFile( (ElementaryFile) findFile(fileID, SPECIFY_EF) );
+        selectFile( findFile(fileID, SPECIFY_EF) );
         return;
     }
 
@@ -254,9 +254,9 @@ public class IsoFileSystem extends DedicatedFile {
             currentlySelectedFiles[OFFSET_CURRENT_DF] = this;
             currentlySelectedFiles[OFFSET_CURRENT_EF] = null;
         } else if(file instanceof DedicatedFile) {
-            currentlySelectedFiles[OFFSET_CURRENT_DF] = (DedicatedFile) file;
+            currentlySelectedFiles[OFFSET_CURRENT_DF] = file;
         } else if (file instanceof ElementaryFile) {
-            currentlySelectedFiles[OFFSET_CURRENT_EF] = (ElementaryFile) file;
+            currentlySelectedFiles[OFFSET_CURRENT_EF] = file;
             currentlySelectedFiles[OFFSET_CURRENT_DF] = ((ElementaryFile)currentlySelectedFiles[OFFSET_CURRENT_EF]).getParentDF();
             this.currentRecordNum = 0;
         }
@@ -316,8 +316,8 @@ public class IsoFileSystem extends DedicatedFile {
         }
 
         // FCI must begin with tag "6F". Or we have FCP, tag "62".
-        if(fci[(short)(offset)] != (byte) 0x6F
-                && fci[(short)(offset)] != (byte) 0x62) {
+        if(fci[(offset)] != (byte) 0x6F
+                && fci[(offset)] != (byte) 0x62) {
             return null;
         }
 
@@ -394,7 +394,7 @@ public class IsoFileSystem extends DedicatedFile {
             switch(fci[(short)(pos+1)]) { // switch on the length: see ISO 7816-4 Table 12, Tag 82.
             case 0x03:
                 // max record size is 1 byte long.
-                recordSize = (short) fci[(short)(pos+4)];
+                recordSize = fci[(short)(pos+4)];
                 break;
 
             case 0x04:
@@ -439,7 +439,7 @@ public class IsoFileSystem extends DedicatedFile {
                     if(fci[(short)(pos+1)] == (byte) 0x02) {
                         dataSize = Util.getShort(fci, (short) (pos+2));
                     } else if(fci[(short)(pos+1)] == (byte) 0x01) {
-                        dataSize = (short) fci[(short)(pos+2)];
+                        dataSize = fci[(short)(pos+2)];
                     } else {
                         ISOException.throwIt(ISO7816.SW_DATA_INVALID);
                     }

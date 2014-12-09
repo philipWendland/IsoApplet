@@ -20,8 +20,6 @@
 package net.pwendland.javacard.pki.isoapplet;
 
 import javacard.framework.*;
-import java.lang.Exception;
-
 import net.pwendland.javacard.pki.isoapplet.UtilTLV;
 
 /**

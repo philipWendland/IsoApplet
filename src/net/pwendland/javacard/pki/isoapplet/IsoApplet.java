@@ -182,6 +182,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
     /**
      * \brief This method is called whenever the applet is being deselected.
      */
+    @Override
     public void deselect() {
         pin.reset();
         puk.reset();
@@ -191,6 +192,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
     /**
      * \brief This method is called whenever the applet is being selected.
      */
+    @Override
     public boolean select() {
         if(state == STATE_CREATION
                 || state == STATE_INITIALISATION) {
@@ -208,6 +210,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
      *
      * \param apdu The incoming APDU.
      */
+    @Override
     public void process(APDU apdu) {
         byte buffer[] = apdu.getBuffer();
         byte ins = buffer[ISO7816.OFFSET_INS];
@@ -388,7 +391,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
         Util.arrayFillNonAtomic(buf, (short)(offset_cdata + lc), (short)(PIN_MAX_LENGTH - lc), (byte) 0x00);
 
         // Check the PIN.
-        if(!pin.check(buf, (short) offset_cdata, PIN_MAX_LENGTH)) {
+        if(!pin.check(buf, offset_cdata, PIN_MAX_LENGTH)) {
             ISOException.throwIt((short)(SW_PIN_TRIES_REMAINING | pin.getTriesRemaining()));
             fs.setUserAuthenticated(false);
         } else {
@@ -661,7 +664,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
         if(len == 2) {
             key.setK(Util.getShort(buf, pos));
         } else if(len == 1) {
-            key.setK((short) buf[pos]);
+            key.setK(buf[pos]);
         } else {
             ISOException.throwIt(ISO7816.SW_WRONG_DATA);
         }
@@ -1098,7 +1101,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
             // SET Computation, decipherment, internal authentication and key agreement.
 
             // Algorithm reference.
-            pos = UtilTLV.findTag(buf, (short) offset_cdata, (byte) lc, (byte) 0x80);
+            pos = UtilTLV.findTag(buf, offset_cdata, (byte) lc, (byte) 0x80);
             if(pos >= 0) {
                 if(buf[++pos] != (byte) 0x01) { // Length must be 1.
                     ISOException.throwIt(ISO7816.SW_DATA_INVALID);
@@ -1110,13 +1113,13 @@ public class IsoApplet extends Applet implements ExtendedLength {
             }
 
             // Private key reference (Index in keys[]-array).
-            pos = UtilTLV.findTag(buf, (short) offset_cdata, (byte) lc, (byte) 0x84);
+            pos = UtilTLV.findTag(buf, offset_cdata, (byte) lc, (byte) 0x84);
             if(pos >= 0) {
                 if(buf[++pos] != (byte) 0x01 // Length: must be 1 - only one key reference (byte) provided.
                         || buf[++pos] >= KEY_MAX_COUNT) { // Value: KEY_MAX_COUNT may not be exceeded. Valid key references are from 0..KEY_MAX_COUNT.
                     ISOException.throwIt(ISO7816.SW_DATA_INVALID);
                 }
-                privKeyRef = (short) buf[pos];
+                privKeyRef = buf[pos];
             } else { // No key reference given.
                 ISOException.throwIt(ISO7816.SW_DATA_INVALID);
             }
