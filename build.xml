@@ -70,7 +70,7 @@
 	 <!-- Compile the java code from ${src} into ${classes} -->
 		<javac debug="no" optimize="yes" srcdir="${src}" destdir="${classes}">
 			<classpath refid="classpath"/>
-			<compilerarg line="-target 1.5 -source 1.5"/>
+			<compilerarg line="-target 1.5 -source 1.5 -Xlint:all -Xlint:-serial"/>
 		</javac>
 	</target>
 	
