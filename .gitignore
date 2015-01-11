@@ -3,3 +3,4 @@ dist
 doc
 *.swp
 *.orig
+*.un~
