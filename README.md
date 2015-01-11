@@ -7,7 +7,7 @@ key-pairs is the only way to get usable private keys onto the smartcard.
 The Applet targets mordern Smartcards. Anything below Java Card 2.2.2 is untested.
 
 
-**For more information please visit ** http://www.pwendland.net/IsoApplet
+**For more information please visit:** http://www.pwendland.net/IsoApplet
 
 Requirements
 ============
