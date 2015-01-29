@@ -109,14 +109,14 @@ public class UtilTLV {
         if(buf[offset] == (byte)0x82) { // 256..65535
             // Check for short overflow
             // (In Java, a short is signed: positive values are 0000..7FFF)
-            if(buf[(short)(offset+1)] > (byte)0x7F) {
+            if(buf[(short)(offset+1)] < 0) { // 80..FF
                 return -1;
             }
             return Util.getShort(buf, (short)(offset+1));
         } else if(buf[offset] == (byte)0x81) {
             return (short) ( 0x00FF & buf[(short)(offset+1)]);
-        } else if(buf[offset] <= (byte)0x7F) {
-            return (short) ( 0x00FF & buf[offset]);
+        } else if(buf[offset] > 0) { // 00..7F
+            return (short) ( 0x007F & buf[offset]);
         } else {
             return -1;
         }
