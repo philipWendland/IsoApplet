@@ -25,13 +25,13 @@ import net.pwendland.javacard.pki.isoapplet.UtilTLV;
 /**
  * \brief The DedicatedFile class.
  *
- * This class acts as a container for any File subclass except the IsoFileSystem class itself. It is equivalent
- * to the ISO "Dedicated File".
+ * A DedicatedFile object acts as a container for objects of any File subclass except the IsoFileSystem class itself.
+ * It emulates the ISO "Dedicated File".
  * Children are stored as references. This means that if a File is being altered after it was added as child,
- * also the child is effectively altered as it is the same object.
+ * the child is effectively altered as well because it is the same object.
  *
- * The size of the array storing the references to the children can be set before compilation.
- * Also, this class tries to increase the size until a maximum value. If you do not want that kind of behavior,
+ * The initial size of the array storing the references to the children can be set before compilation.
+ * This class tries to increase the size until a maximum value. If you do not want that kind of behavior,
  * set CHILDREN_COUNT_MAX to the same value as CHILDREN_COUNT_START.
  */
 public class DedicatedFile extends File {
@@ -201,7 +201,7 @@ public class DedicatedFile extends File {
      * \brief Copies the references from one File array to the other.
      *
      * \attention Although only references are copied, this is probably still quite expensive because
-     * writing to EEPROM is. Only use this for operations that are not called often (Creating and deleting files etc.).
+     * writing to the EEPROM is. Only use this for operations that are not called often (Creating and deleting files etc.).
      *
      * \param src The source File array to copy from.
      *

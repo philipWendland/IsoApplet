@@ -30,7 +30,7 @@ import net.pwendland.javacard.pki.isoapplet.UtilTLV;
  * Normally, most of the file system oriented operations should happen through one object of this class.
  *
  * Due to the ISO 7816-4 DF and EF selection (see section 7.1) the currently selected DF and EF
- * are being saved internally. File related operations are being executed upon those selected files respectively.
+ * are being saved internally. File-related operations are being executed upon those selected files respectively.
  * It is therefor possible to select a file and execute a number of operations upon this file without the need to
  * specify a target in each individual method call. This also saves execution time and reduces stack usage.
  *
@@ -203,7 +203,7 @@ public class IsoFileSystem extends DedicatedFile {
     /**
      * \brief Search for the DF with the specified name.
      *
-     * \param DFname The array containing the up to 16 byte long DedicatedFile name.
+     * \param dfName The array containing the up to 16 byte long DedicatedFile name.
      *
      * \param nameOffset The offset at which the DF name begins in the name array.
      *
@@ -213,11 +213,11 @@ public class IsoFileSystem extends DedicatedFile {
      *
      * \return The requested DedicatedFile (if found).
      */
-    public DedicatedFile findDedicatedFileByName(byte[] DFname, short nameOffset, short nameLength) throws FileNotFoundException {
-        if (isName(DFname, nameOffset, nameLength)) {
+    public DedicatedFile findDedicatedFileByName(byte[] dfName, short nameOffset, short nameLength) throws FileNotFoundException {
+        if (isName(dfName, nameOffset, nameLength)) {
             return this;
         }
-        return super.findDedicatedFileByNameRec(DFname, nameOffset, nameLength);
+        return super.findDedicatedFileByNameRec(dfName, nameOffset, nameLength);
     }
 
 
@@ -452,7 +452,7 @@ public class IsoFileSystem extends DedicatedFile {
 
             case 0x02: // Linear structure, fixed size, no further information: fall through.
             case 0x03:
-                /* Linear structure, fixed size, TLV structure (TLV is neither ensured nor interpreted by card.) */
+                // Linear structure, fixed size, TLV structure (TLV is neither ensured nor interpreted by card.)
                 fciEEPROM = new byte[length];
                 Util.arrayCopy(fci, offset, fciEEPROM, (short) 0, length);
                 return new ElementaryFileLinearFixed(fileID, fciEEPROM, maxRecords, recordSize);

@@ -20,7 +20,7 @@
 package net.pwendland.javacard.pki.isoapplet;
 
 /**
- * \brief The abstract ElementaryFile class.
+ * \brief The abstract class ElementaryFile.
  *
  * It's main purpose is to be able to easily differentiate between EFs and DFs.
  */

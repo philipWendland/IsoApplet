@@ -42,11 +42,11 @@ import javacard.security.Signature;
 /**
  * \brief The IsoApplet class.
  *
- * This applet has a filesystem and accepts relevent ISO 7816 instructions.
+ * This applet has a filesystem and accepts relevant ISO 7816 instructions.
  * Access control is forced through a PIN and a PUK. The PUK is optional
  * (Set PUK_MUST_BE_SET). Security Operations are being processed directly in
  * this class. Only private keys are stored as Key-objects. Only security
- * operations with private keys can be performed (decrypt, sign with RSA,
+ * operations with private keys can be performed (decrypt with RSA, sign with RSA,
  * sign with ECDSA).
  *
  * \author Philip Wendland
@@ -673,8 +673,8 @@ public class IsoApplet extends Applet implements ExtendedLength {
     /**
      * \brief Process the GENERATE ASYMMETRIC KEY PAIR apdu (INS = 46).
      *
-     * Currently, only RSA 2048 bit keys are supported. A MANAGE SECURITY ENVIRONMENT must
-     * have succeeded eralier to set parameters for key generation.
+     * A MANAGE SECURITY ENVIRONMENT must have succeeded eralier to set parameters for key
+     * generation.
      *
      * \param apdu The apdu.
      *
@@ -871,8 +871,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
      * \brief Process the GET RESPONSE APDU (INS=C0).
      *
      * If there is content available in ram_buf that could not be sent in the last operation,
-     * the host should use this APDU to get the data. The data is cached in ram_buf, i.e. only
-     * one GET RESPONSE can be done with max. 256 bytes.
+     * the host should use this APDU to get the data. The data is cached in ram_buf.
      *
      * \param apdu The GET RESPONSE apdu.
      *
@@ -1557,11 +1556,11 @@ public class IsoApplet extends Applet implements ExtendedLength {
     }
 
     /**
-     * \brief Update one field of the current private RSA key.
+     * \brief Update fields of the current private RSA key.
      *
      * A MANAGE SECURITY ENVIRONMENT must have preceeded, setting the current
      * algorithm reference to ALG_GEN_RSA_2048.
-     * This method updates creates a new instance of the current private key,
+     * This method creates a new instance of the current private key,
      * depending on the current algorithn reference.
      *
      * \param buf The buffer containing the information to update the private key

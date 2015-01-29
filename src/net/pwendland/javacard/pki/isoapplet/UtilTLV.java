@@ -125,7 +125,7 @@ public class UtilTLV {
     /**
      * \brief Get the length of the length field of a TLV-entry.
      *
-     * Note: Not the length of the value-field is returned,
+     * \attention Not the length of the value-field is returned,
      * but the length of the length field itself.
      *
      * \see decodeLengthField()
