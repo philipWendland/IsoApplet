@@ -123,7 +123,7 @@ public abstract class File {
      *
      * \return The FCI array.
      */
-    public byte[] getFileControlInformation() {
+    public final byte[] getFileControlInformation() {
         return this.fci;
     }
 
