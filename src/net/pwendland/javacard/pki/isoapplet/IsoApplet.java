@@ -392,8 +392,8 @@ public class IsoApplet extends Applet implements ExtendedLength {
 
         // Check the PIN.
         if(!pin.check(buf, offset_cdata, PIN_MAX_LENGTH)) {
-            ISOException.throwIt((short)(SW_PIN_TRIES_REMAINING | pin.getTriesRemaining()));
             fs.setUserAuthenticated(false);
+            ISOException.throwIt((short)(SW_PIN_TRIES_REMAINING | pin.getTriesRemaining()));
         } else {
             fs.setUserAuthenticated(true);
         }
