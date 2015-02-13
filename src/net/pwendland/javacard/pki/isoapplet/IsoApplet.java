@@ -883,6 +883,10 @@ public class IsoApplet extends Applet implements ExtendedLength {
         byte[] buf = apdu.getBuffer();
         short le = apdu.setOutgoing();
 
+        if( ! pin.isValidated() ) {
+            ISOException.throwIt(ISO7816.SW_SECURITY_STATUS_NOT_SATISFIED);
+        }
+
         if(ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_BYTES_REMAINING] <= (short) 0) {
             ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
         }
