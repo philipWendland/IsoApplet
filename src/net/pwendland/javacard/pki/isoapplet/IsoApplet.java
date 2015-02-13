@@ -241,13 +241,15 @@ public class IsoApplet extends Applet implements ExtendedLength {
             short p1p2 = Util.getShort(buffer, ISO7816.OFFSET_P1);
             /*
              * Command chaining only for:
-             * 	- PERFORM SECURITY OPERATION without extended APDUs
-             * 	- GENERATE ASYMMETRIC KEYKAIR without extended APDUs
+             * 	- PERFORM SECURITY OPERATION
+             * 	- GENERATE ASYMMETRIC KEYKAIR
              * 	- PUT DATA
+             * when not using extended APDUs.
              */
-            if( ins != INS_PUT_DATA
-                    && ins != INS_PERFORM_SECURITY_OPERATION && !DEF_EXT_APDU
-                    && ins != INS_GENERATE_ASYMMETRIC_KEYPAIR && !DEF_EXT_APDU) {
+            if( DEF_EXT_APDU ||
+                    (ins != INS_PERFORM_SECURITY_OPERATION
+                     && ins != INS_GENERATE_ASYMMETRIC_KEYPAIR
+                     && ins != INS_PUT_DATA)) {
                 ISOException.throwIt(ISO7816.SW_COMMAND_CHAINING_NOT_SUPPORTED);
             }
 
