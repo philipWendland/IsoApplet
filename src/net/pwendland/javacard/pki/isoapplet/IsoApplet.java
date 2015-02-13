@@ -348,7 +348,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
      * \brief Process the VERIFY apdu (INS = 20).
      *
      * This apdu is used to verify a PIN and authenticate the user. A counter is used
-     * to limit unsuccessful ties (i.e. brute force attacks).
+     * to limit unsuccessful tries (i.e. brute force attacks).
      *
      * \param apdu The apdu.
      *
@@ -508,7 +508,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
             pin.update(buf, (short) (offset_cdata+PIN_MAX_LENGTH), PIN_MAX_LENGTH);
 
         }// end if(state == STATE_CREATION)
-    }// end processChangeRefereceData()
+    }// end processChangeReferenceData()
 
     /**
      * \brief Process the RESET RETRY COUNTER apdu (INS = 2C).
@@ -675,7 +675,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
     /**
      * \brief Process the GENERATE ASYMMETRIC KEY PAIR apdu (INS = 46).
      *
-     * A MANAGE SECURITY ENVIRONMENT must have succeeded eralier to set parameters for key
+     * A MANAGE SECURITY ENVIRONMENT must have succeeded earlier to set parameters for key
      * generation.
      *
      * \param apdu The apdu.
