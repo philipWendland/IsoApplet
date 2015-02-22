@@ -114,6 +114,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
 
     private static final byte API_FEATURE_EXT_APDU = (byte) 0x01;
     private static final byte API_FEATURE_SECURE_RANDOM = (byte) 0x02;
+    private static final byte API_FEATURE_ECC = (byte) 0x04;
 
     /* Other constants */
     // "ram_buf" is used for:
@@ -181,7 +182,22 @@ public class IsoApplet extends Applet implements ExtendedLength {
         keys = new Key[KEY_MAX_COUNT];
 
         rsaPkcs1Cipher = Cipher.getInstance(Cipher.ALG_RSA_PKCS1, false);
-        ecdsaSignature = Signature.getInstance(Signature.ALG_ECDSA_SHA, false);
+
+        try {
+            ecdsaSignature = Signature.getInstance(Signature.ALG_ECDSA_SHA, false);
+            api_features |= API_FEATURE_ECC;
+        } catch (CryptoException e) {
+            if(e.getReason() == CryptoException.NO_SUCH_ALGORITHM) {
+                /* Few Java Cards do not support ECDSA at all.
+                 * We should not throw an exception in this cases
+                 * as this would prevent installation. */
+                ecdsaSignature = null;
+                api_features &= ~API_FEATURE_ECC;
+            } else {
+                throw e;
+            }
+        }
+
         try {
             randomData = RandomData.getInstance(RandomData.ALG_SECURE_RANDOM);
             api_features |= API_FEATURE_SECURE_RANDOM;
@@ -1117,6 +1133,10 @@ public class IsoApplet extends Applet implements ExtendedLength {
             if(privKeyRef < 0) {
                 ISOException.throwIt(ISO7816.SW_DATA_INVALID);
             }
+            if(algRef == ALG_GEN_EC && ecdsaSignature == null) {
+                // There are cards that do not support ECDSA at all.
+                ISOException.throwIt(ISO7816.SW_FUNC_NOT_SUPPORTED);
+            }
             break;
 
         case (byte) 0xB6:
@@ -1140,6 +1160,9 @@ public class IsoApplet extends Applet implements ExtendedLength {
                 // Key reference must point to a EC private key.
                 if(keys[privKeyRef].getType() != KeyBuilder.TYPE_EC_FP_PRIVATE) {
                     ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+                }
+                if(ecdsaSignature == null) {
+                    ISOException.throwIt(ISO7816.SW_FUNC_NOT_SUPPORTED);
                 }
 
             } else {
