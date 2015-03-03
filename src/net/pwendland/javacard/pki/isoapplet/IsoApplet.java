@@ -142,6 +142,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
     private short[] ram_chaining_cache = null;
     private Cipher rsaPkcs1Cipher = null;
     private Signature ecdsaSignature = null;
+    private byte api_features;
 
     /**
      * \brief Installs this applet.
@@ -176,6 +177,12 @@ public class IsoApplet extends Applet implements ExtendedLength {
         ecdsaSignature = Signature.getInstance(Signature.ALG_ECDSA_SHA, false);
 
         state = STATE_CREATION;
+
+        api_features = 0;
+        if(DEF_EXT_APDU) {
+            api_features |= 0x01;
+        }
+
         register();
     }
 
@@ -223,10 +230,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
         if(selectingApplet()) {
             buffer[0] = API_VERSION_MAJOR;
             buffer[1] = API_VERSION_MINOR;
-            buffer[2] = 0x00;
-            if(DEF_EXT_APDU) {
-                buffer[2] |= 0x01;
-            }
+            buffer[2] = api_features;
             apdu.setOutgoingAndSend((short) 0, (short) 3);
             return;
         }
@@ -776,7 +780,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
     }
 
     /**
-     * \brief Encode a RSAPublicKey according to ISO7816-8 table 3 and send it as a response,
+     * \brief Encode a 2048 bit RSAPublicKey according to ISO7816-8 table 3 and send it as a response,
      * using an extended APDU.
      *
      * \see ISO7816-8 table 3.
@@ -787,85 +791,25 @@ public class IsoApplet extends Applet implements ExtendedLength {
      * 			Can be null for the secound part if there is no support for extended apdus.
      */
     private void sendRSAPublicKey(APDU apdu, RSAPublicKey key) {
-        byte[] buf = apdu.getBuffer();
         short le = apdu.setOutgoing();
+        short pos = 0;
 
-        if(DEF_EXT_APDU) {
-            if(le != 270) {
-                apdu.setOutgoingLength((short) 270);
-            }
-            buf[(short) 0] = (byte) 0x7F; // Interindustry template for nesting one set of public key data objects.
-            buf[(short) 1] = (byte) 0x49; // "
-            buf[(short) 2] = (byte) 0x82; // Length field: 3 Bytes.
-            buf[(short) 3] = (byte) 0x01; // Length : 265 Bytes.
-            buf[(short) 4] = (byte) 0x09; // "
+        ram_buf[pos++] = (byte) 0x7F; // Interindustry template for nesting one set of public key data objects.
+        ram_buf[pos++] = (byte) 0x49; // "
+        ram_buf[pos++] = (byte) 0x82; // Length field: 3 Bytes.
+        ram_buf[pos++] = (byte) 0x01; // Length : 265 Bytes.
+        ram_buf[pos++] = (byte) 0x09; // "
 
-            buf[(short) 5] = (byte) 0x81; // RSA public key modulus tag.
-            buf[(short) 6] = (byte) 0x82; // Length field: 3 Bytes.
-            buf[(short) 7] = (byte) 0x01; // Length: 256 bytes.
-            buf[(short) 8] = (byte) 0x00; // "
+        ram_buf[pos++] = (byte) 0x81; // RSA public key modulus tag.
+        ram_buf[pos++] = (byte) 0x82; // Length field: 3 Bytes.
+        ram_buf[pos++] = (byte) 0x01; // Length: 256 bytes.
+        ram_buf[pos++] = (byte) 0x00; // "
+        pos += key.getModulus(ram_buf, pos);
+        ram_buf[pos++] = (byte) 0x82; // RSA public key exponent tag.
+        ram_buf[pos++] = (byte) 0x03; // Length: 3 Bytes.
+        pos += key.getExponent(ram_buf, pos);
 
-            // We can use a extended APDU.
-            apdu.sendBytes((short) 0, (short) 9); // Early send, because the modulus will be big.
-            if(key.getModulus(buf, (short) 0) != 256) { // Write the modulus to the apdu buffer.
-                ISOException.throwIt(ISO7816.SW_UNKNOWN);
-            }
-            apdu.sendBytes((short) 0, (short) 256); // Send the modulus.
-
-            buf[(short) 0] = (byte) 0x82; // RSA public key exponent tag.
-            buf[(short) 1] = (byte) 0x03; // Length: 3 Bytes.
-            key.getExponent(buf, (short) 2);
-            apdu.sendBytes((short) 0, (short) 5);
-
-        } else {
-            // We have 256 Bytes send-capacity per APDU.
-
-            if(ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_BYTES_REMAINING] > (short) 0) {
-                // Should not happen - there is old content to get with GET RESPONSE
-                ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
-            }
-            // We excpect Le to be 00.
-            if(le != 256) {
-                ISOException.throwIt(ISO7816.SW_CORRECT_LENGTH_00);
-            }
-
-            buf[(short) 0] = (byte) 0x7F; // Interindustry template for nesting one set of public key data objects.
-            buf[(short) 1] = (byte) 0x49; // "
-            buf[(short) 2] = (byte) 0x82; // Length field: 3 Bytes.
-            buf[(short) 3] = (byte) 0x01; // Length : 265 Bytes.
-            buf[(short) 4] = (byte) 0x09; // "
-
-            buf[(short) 5] = (byte) 0x81; // RSA public key modulus tag.
-            buf[(short) 6] = (byte) 0x82; // Length field: 3 Bytes.
-            buf[(short) 7] = (byte) 0x01; // Length: 256 bytes.
-            buf[(short) 8] = (byte) 0x00; // "
-            // Currently there are 9 Bytes in the apdu buffer. The length of the modulus is 256 bytes - it does not fit in.
-            // We have to split the modulus and send a part of it with the first apdu.
-            // We write it to "ram_buf" first.
-            if(key.getModulus(ram_buf, (short) 0) != 256) {
-                ISOException.throwIt(ISO7816.SW_UNKNOWN);
-            }
-
-            // Write the first part to the apdu buffer and send it.
-            Util.arrayCopyNonAtomic(ram_buf, (short) 0, buf, (short) 9, (short) 247);
-            apdu.setOutgoingLength((short) 256);
-            apdu.sendBytes((short) 0, (short) 256);
-            // Prepare ram_buf for the next send operation in the chain.
-            short i;
-            for(i = 0; i < 9 ; i++) {
-                ram_buf[i] = ram_buf[(short)((short)247+i)];
-            }
-            ram_buf[(short) 9] = (byte) 0x82; // RSA public key exponent tag.
-            ram_buf[(short) 10] = (byte) 0x03; // Length: 3 Bytes.
-            key.getExponent(ram_buf, (short) 11);
-            ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_BYTES_REMAINING] = (short) 14;
-            ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_POS] = (short) 0;
-            ISOException.throwIt((short) (ISO7816.SW_BYTES_REMAINING_00
-                                          | (short)((short)0x00FF & ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_BYTES_REMAINING]) )
-                                );
-            // The second part of the data is now in ram_buf, metadata is in ram_chaining_cache.
-            // It can be fetched by the host via GET RESPONSE.
-        }
+        sendLargeData(apdu, (short)0, pos);
     }
 
 
@@ -891,23 +835,60 @@ public class IsoApplet extends Applet implements ExtendedLength {
             ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
         }
 
-        if(ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_BYTES_REMAINING] > (short) 256) {
+        short expectedLe = ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_BYTES_REMAINING] > 256 ?
+                           256 : ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_BYTES_REMAINING];
+        if(le != expectedLe) {
+            ISOException.throwIt( (short)(ISO7816.SW_CORRECT_LENGTH_00 | expectedLe) );
+        }
+
+        sendLargeData(apdu, ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_POS],
+                      ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_BYTES_REMAINING]);
+    }
+
+    /**
+     * \brief Send the data from ram_buf, using either extended APDUs or GET RESPONSE.
+     *
+     * \param apdu The APDU object, in STATE_OUTGOING state.
+     *
+     * \param pos The position in ram_buf at where the data begins
+     *
+     * \param len The length of the data to be sent. If zero, 9000 will be
+     *            returned
+     */
+    private void sendLargeData(APDU apdu, short pos, short len) {
+        if(len <= 0) {
+            ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_BYTES_REMAINING] = 0;
+            ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_POS] = 0;
+            ISOException.throwIt(ISO7816.SW_NO_ERROR);
+        }
+
+        if((short)(pos + len) > RAM_BUF_SIZE) {
             ISOException.throwIt(ISO7816.SW_UNKNOWN);
         }
 
-        if(ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_BYTES_REMAINING] != le) {
-            ISOException.throwIt((short)(ISO7816.SW_CORRECT_LENGTH_00
-                                         | (short)((short)0x00FF & ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_BYTES_REMAINING])));
+        if(DEF_EXT_APDU) {
+            apdu.setOutgoingLength(len);
+            apdu.sendBytesLong(ram_buf, pos, len);
+        } else {
+            // We have 256 Bytes send-capacity per APDU.
+            // Send directly from ram_buf, then prepare for chaining.
+            short sendLen = len > 256 ? 256 : len;
+            apdu.setOutgoingLength(sendLen);
+            apdu.sendBytesLong(ram_buf, pos, sendLen);
+            short bytesLeft = (short)(len - sendLen);
+            if(bytesLeft > 0) {
+                ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_BYTES_REMAINING] = bytesLeft;
+                ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_POS] = (short)(pos + sendLen);
+                short getRespLen = bytesLeft > 256 ? 256 : bytesLeft;
+                ISOException.throwIt( (short)(ISO7816.SW_BYTES_REMAINING_00 | getRespLen) );
+                // The next part of the data is now in ram_buf, metadata is in ram_chaining_cache.
+                // It can be fetched by the host via GET RESPONSE.
+            } else {
+                ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_BYTES_REMAINING] = 0;
+                ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_POS] = 0;
+                ISOException.throwIt(ISO7816.SW_NO_ERROR);
+            }
         }
-
-        Util.arrayCopyNonAtomic(ram_buf, ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_POS],
-                                buf, (short) 0, ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_BYTES_REMAINING]);
-        apdu.setOutgoingLength(ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_BYTES_REMAINING]);
-        apdu.sendBytes((short) 0, ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_BYTES_REMAINING]);
-
-        ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_BYTES_REMAINING] = (short) 0;
-        ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_POS] = (short) 0;
-        Util.arrayFillNonAtomic(ram_buf, (short) 0, RAM_BUF_SIZE, (byte) 0x00);
     }
 
     /**
@@ -1035,30 +1016,8 @@ public class IsoApplet extends Applet implements ExtendedLength {
         pos+=2;
 
         // ram_buf now contains the complete public key.
-        if(pos <= 256 || DEF_EXT_APDU) {
-            len = pos;
-        } else {
-            len = 256;
-        }
         apdu.setOutgoing();
-        apdu.setOutgoingLength(len);
-        apdu.sendBytesLong(ram_buf, (short)0, len);
-
-        if(len < pos) {
-            // The data did not fit in a short apdu and no extended apdus are supported.
-            // Prepare GET RESPONSE.
-            ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_BYTES_REMAINING] = (short)(pos - len);
-            ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_POS] = len;
-            short bytesRemaining;
-            if(ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_BYTES_REMAINING] > 255) {
-                bytesRemaining = 0x00FF;
-            } else {
-                bytesRemaining = ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_BYTES_REMAINING];
-            }
-            ISOException.throwIt( (short)(ISO7816.SW_BYTES_REMAINING_00 | bytesRemaining) );
-            // The second part of the data is now in ram_buf, metadata is in ram_chaining_cache.
-            // It can be fetched by the host via GET RESPONSE.
-        }
+        sendLargeData(apdu, (short)0, pos);
     }
 
     /**
