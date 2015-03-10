@@ -38,9 +38,13 @@ public class UtilTLV {
      *
      * \param tag The tag to search for.
      *
-     * \return The position of the tag if found or -1.
+     * \return The position of the tag.
+     *
+     * \throw NotFoundException If the tag could not be found.
+     *
+     * \throw InvalidArgumentsException Malformatted TLV data.
      */
-    public static short findTag(byte[] tlv, short tlvOffset, short tlvLength, byte tag) {
+    public static short findTag(byte[] tlv, short tlvOffset, short tlvLength, byte tag) throws NotFoundException, InvalidArgumentsException {
         short tagPos = tlvOffset;
         short len;
 
@@ -54,7 +58,7 @@ public class UtilTLV {
             // This saves execution time and ensures that no byte from V is misinterpreted.
             tagPos += 1 + getLengthFieldLength(len) + len;
         }
-        return -1;
+        throw NotFoundException.getInstance();
     }
 
     /**
@@ -77,11 +81,12 @@ public class UtilTLV {
         short len;
 
         while(pos < (short)(length+offset-1)) {
-            len = decodeLengthField(tlv, (short)(pos+1));
-            if(len < 0) {
+            try {
+                len = decodeLengthField(tlv, (short)(pos+1));
+                pos += 1 + getLengthFieldLength(len) + len;
+            } catch (InvalidArgumentsException e) {
                 return false;
             }
-            pos += 1 + getLengthFieldLength(len) + len;
         }
         return (pos == (short)(offset+length));
     }
@@ -104,13 +109,16 @@ public class UtilTLV {
      * \param length The length of the buffer (buf). This is to prevent that the index gets out of bounds.
      *
      * \return The (positive) length encoded by the length field, or in case of an error, -1.
+     *
+     * \throw InvalidArgumentsException If offset is too big for a signed Java short
+     *                                  If the first byte of the length field is invalid
      */
-    public static short decodeLengthField(byte[] buf, short offset) {
+    public static short decodeLengthField(byte[] buf, short offset) throws InvalidArgumentsException {
         if(buf[offset] == (byte)0x82) { // 256..65535
             // Check for short overflow
             // (In Java, a short is signed: positive values are 0000..7FFF)
             if(buf[(short)(offset+1)] < 0) { // 80..FF
-                return -1;
+                throw InvalidArgumentsException.getInstance();
             }
             return Util.getShort(buf, (short)(offset+1));
         } else if(buf[offset] == (byte)0x81) {
@@ -118,7 +126,7 @@ public class UtilTLV {
         } else if(buf[offset] > 0) { // 00..7F
             return (short) ( 0x007F & buf[offset]);
         } else {
-            return -1;
+            throw InvalidArgumentsException.getInstance();
         }
     }
 
@@ -132,11 +140,14 @@ public class UtilTLV {
      *
      * \param length The decoded length from the TLV-entry.
      *
-     * \return -1 in case of an error, or the length of the length field.
+     * \return The length of the length field.
+     *
+     * \throw InvalidArgumentsException If the length would overflow the signed
+     *                                  short of Java.
      */
-    public static short getLengthFieldLength(short length) {
+    public static short getLengthFieldLength(short length) throws InvalidArgumentsException {
         if(length < 0) {
-            return -1;
+            throw InvalidArgumentsException.getInstance();
         } else if(length < 128) {
             return 1;
         } else if(length < 256) {
@@ -161,9 +172,14 @@ public class UtilTLV {
      *
      * \param outOffset The offset at which to start writing the tag.
      *
-     * \return -1 in case of an error, or the length that was written.
+     * \return The length that was written.
+     *
+     * \throw InvalidArgumentsException If the tag is invalid.
+     *                                  If len is negative.
+     *
+     * \throw NotEnoughSpaceException If the buffer "out" is too small.
      */
-    public static short writeTagAndLen(short tag, short len, byte[] out, short outOffset) {
+    public static short writeTagAndLen(short tag, short len, byte[] out, short outOffset) throws InvalidArgumentsException, NotEnoughSpaceException {
         byte tagLen;
         short pos = outOffset;
         short outLen = (short)out.length;
@@ -171,7 +187,7 @@ public class UtilTLV {
         if((short)(tag & (short)0xFF00) != 0) {
             if((short)(tag & (short)0x1F00) != (short)0x1F00) {
                 /* Missing escape marker */
-                return -1;
+                throw InvalidArgumentsException.getInstance();
             }
             tagLen = 2;
         } else {
@@ -179,10 +195,10 @@ public class UtilTLV {
         }
 
         if(len < 0) {
-            return -1;
+            throw InvalidArgumentsException.getInstance();
         }
         if((short)(tagLen + getLengthFieldLength(len)) > (short)(outLen - outOffset)) {
-            return -1;
+            throw NotEnoughSpaceException.getInstance();
         }
 
         if(tagLen == 1) {

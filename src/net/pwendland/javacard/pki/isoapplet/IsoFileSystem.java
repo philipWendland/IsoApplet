@@ -97,9 +97,9 @@ public class IsoFileSystem extends DedicatedFile {
      *
      * \param fileID The ID of the file.
      *
-     * \throw FileNotFoundException If the specified file was not found or was of the wrong type.
+     * \throw NotFoundException If the specified file was not found or was of the wrong type.
      */
-    public void setCurrentlySelectedDF(short fileID) throws FileNotFoundException {
+    public void setCurrentlySelectedDF(short fileID) throws NotFoundException {
         selectFile( findFile(fileID, SPECIFY_DF) );
         return;
     }
@@ -118,9 +118,9 @@ public class IsoFileSystem extends DedicatedFile {
      *
      * \brief fileID The ID of the file.
      *
-     * \throw FileNotFoundException If the specified file was not found or was of the wrong type.
+     * \throw NotFoundException If the specified file was not found or was of the wrong type.
      */
-    public void setCurrentlyselectedEF(short fileID) throws FileNotFoundException {
+    public void setCurrentlyselectedEF(short fileID) throws NotFoundException {
         selectFile( findFile(fileID, SPECIFY_EF) );
         return;
     }
@@ -209,11 +209,11 @@ public class IsoFileSystem extends DedicatedFile {
      *
      * \param nameLength The length of the DF name.
      *
-     * \throw FileNotFoundException If the file was not found.
+     * \throw NotFoundException If the file was not found.
      *
      * \return The requested DedicatedFile (if found).
      */
-    public DedicatedFile findDedicatedFileByName(byte[] dfName, short nameOffset, short nameLength) throws FileNotFoundException {
+    public DedicatedFile findDedicatedFileByName(byte[] dfName, short nameOffset, short nameLength) throws NotFoundException {
         if (isName(dfName, nameOffset, nameLength)) {
             return this;
         }
@@ -228,11 +228,11 @@ public class IsoFileSystem extends DedicatedFile {
      *
      * \param flag A flag to specify if the currently selected EF or DF is the target (SPECIFY_EF, SPECIFY_DF, SPECIFY_ANY).
      *
-     * \throw FileNotFoundException If the file could not be found.
+     * \throw NotFoundException If the file could not be found.
      *
      * \return The File (if found).
      */
-    public File findFile(short fileID, byte flag) throws FileNotFoundException {
+    public File findFile(short fileID, byte flag) throws NotFoundException {
         if(fileID == getFileID() && flag != SPECIFY_EF) {
             return this;
         }
@@ -301,7 +301,7 @@ public class IsoFileSystem extends DedicatedFile {
      *
      * \return The new file of the FCI was valid, null else.
      */
-    public File getSafeFile(byte[] fci, short offset, short length) throws ISOException {
+    public File getSafeFile(byte[] fci, short offset, short length) throws ISOException, InvalidArgumentsException, NotFoundException {
         short fileID;
         byte fileDescByte;
         final short innerLength, innerOffset;
@@ -312,19 +312,19 @@ public class IsoFileSystem extends DedicatedFile {
          ************************/
         // Are we in bounds?
         if((short)(fci.length) <= (short)(offset+length)) {
-            return null;
+            throw InvalidArgumentsException.getInstance();
         }
 
         // FCI must begin with tag "6F". Or we have FCP, tag "62".
         if(fci[(offset)] != (byte) 0x6F
                 && fci[(offset)] != (byte) 0x62) {
-            return null;
+            throw NotFoundException.getInstance();
         }
 
         // length and length-field of outer FCI tag consistency check.
         innerLength = UtilTLV.decodeLengthField(fci, (short)(offset+1));
         if(innerLength != (short)(length-1-UtilTLV.getLengthFieldLength(innerLength))) {
-            return null;
+            throw InvalidArgumentsException.getInstance();
         }
 
         // Let innerOffset point to the first inner TLV entry.
@@ -332,42 +332,46 @@ public class IsoFileSystem extends DedicatedFile {
 
         // Now we check for the consistency of the lower level TLV entries.
         if( ! UtilTLV.isTLVconsistent(fci, innerOffset, innerLength) ) {
-            ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+            throw InvalidArgumentsException.getInstance();
         }
 
         // Extract the FID from the FCI which is passed to the FileXXX contructor and saved
         // separately for performance reasons.
         pos = UtilTLV.findTag(fci, innerOffset, innerLength, (byte) 0x83);
         len = UtilTLV.decodeLengthField(fci, (short)(pos+1));
-        if (pos < 0 || len != (short) 2) {
-            return null;
+        if (len != (short) 2) {
+            throw InvalidArgumentsException.getInstance();
         }
         fileID = Util.getShort(fci, (short)(pos+1+UtilTLV.getLengthFieldLength(len)));
         // The fileID must be unique.
         try {
             this.findFile(fileID, SPECIFY_ANY);
-            return null;
-        } catch( FileNotFoundException e) {
+            throw InvalidArgumentsException.getInstance();
+        } catch(NotFoundException e) {
 
         }
 
-        // Search the ACL tag (86). If the position is -1, then we do not have any ACL and any
+        // Search the ACL tag (86). If not found, then we do not have any ACL and any
         // action may be performed.
-        pos = UtilTLV.findTag(fci, innerOffset, innerLength, (byte) 0x86);
-        len = UtilTLV.decodeLengthField(fci, (short)(pos+1));
-        // If we have an ACL, the length must be 8. (1 access mode byte according to ISO 7816-4
-        // tables 16 and 17, followed by 7 security condition bytes according to table 20.)
-        // I.e. we require every security condition byte to be present. This eases ACL calculation.
-        if(pos > 0 && len != (short)8) {
-            return null;
+        try {
+            pos = UtilTLV.findTag(fci, innerOffset, innerLength, (byte) 0x86);
+            len = UtilTLV.decodeLengthField(fci, (short)(pos+1));
+            // If we have an ACL, the length must be 8. (1 access mode byte according to ISO 7816-4
+            // tables 16 and 17, followed by 7 security condition bytes according to table 20.)
+            // I.e. we require every security condition byte to be present. This eases ACL calculation.
+            if(len != (short)8) {
+                throw InvalidArgumentsException.getInstance();
+            }
+        } catch (NotFoundException e) {
+            // Ignore error (no ACL present).
         }
 
         // Check and get the File Descriptor Byte (ISO 7816-4 table 14).
         pos = UtilTLV.findTag(fci, innerOffset, innerLength, (byte) 0x82);
         len = UtilTLV.decodeLengthField(fci, (short)(pos+1));
         // Ensure position found and correct length:
-        if(pos < 0 || len < (short)1 || len > (short)6) {
-            return null;
+        if(len < (short)1 || len > (short)6) {
+            throw InvalidArgumentsException.getInstance();
         }
         fileDescByte = fci[(short)(pos+2)];
 
@@ -409,13 +413,13 @@ public class IsoFileSystem extends DedicatedFile {
                 break;
 
             case 0x06:
-                // max record size is 2 bytes long, nu,ber of records is 2 bytes long.
+                // max record size is 2 bytes long, number of records is 2 bytes long.
                 recordSize = Util.getShort(fci, (short)(pos+4));
                 if(fci[(short)(pos+6)] == 0x00) {
                     maxRecords = fci[(short)(pos+7)];
                 } else {
                     // We only support up to 255 records per file.
-                    return null;
+                    throw InvalidArgumentsException.getInstance();
                 }
                 break;
 
@@ -427,15 +431,14 @@ public class IsoFileSystem extends DedicatedFile {
             switch(fileDescByte & 0x07) {
             case 0x00:
                 /* No information given - We don't know what to do. */
-                return null;
+                throw InvalidArgumentsException.getInstance();
 
             case 0x01:
                 /* Transparent structure */
                 // Get the "data size" tag to determine how many bytes to allocate.
-                pos = UtilTLV.findTag(fci, (short)(offset+2), fci[(short)(offset+1)], (byte) 0x81);
-                short dataSize = 128; // Assume a default data size.
-
-                if(pos >= 0) {
+                short dataSize = 128;
+                try {
+                    pos = UtilTLV.findTag(fci, (short)(offset+2), fci[(short)(offset+1)], (byte) 0x81);
                     if(fci[(short)(pos+1)] == (byte) 0x02) {
                         dataSize = Util.getShort(fci, (short) (pos+2));
                     } else if(fci[(short)(pos+1)] == (byte) 0x01) {
@@ -443,6 +446,8 @@ public class IsoFileSystem extends DedicatedFile {
                     } else {
                         ISOException.throwIt(ISO7816.SW_DATA_INVALID);
                     }
+                } catch (NotFoundException e) {
+                    // Ignore - use assumed default file size.
                 }
 
                 // Instantiate the EF.
@@ -474,9 +479,9 @@ public class IsoFileSystem extends DedicatedFile {
             // End EF (Working or internal).
         } else {
             // Not a supported file format.
-            return null;
+            throw InvalidArgumentsException.getInstance();
         }
-        return null;
+        throw InvalidArgumentsException.getInstance();
     }
 
 
@@ -531,7 +536,7 @@ public class IsoFileSystem extends DedicatedFile {
                 fid = Util.makeShort(buf[offset_cdata], buf[(short)(offset_cdata+1)]);
                 try {
                     fileToSelect = findFile(fid , SPECIFY_ANY);
-                } catch(FileNotFoundException e) {
+                } catch(NotFoundException e) {
                     ISOException.throwIt(ISO7816.SW_FILE_NOT_FOUND);
                 }
             }
@@ -540,7 +545,7 @@ public class IsoFileSystem extends DedicatedFile {
             fid = Util.makeShort(buf[offset_cdata], buf[(short)(offset_cdata+1)]);
             try {
                 fileToSelect = getCurrentlySelectedDF().findChildrenRec(fid, SPECIFY_DF);
-            } catch(FileNotFoundException e) {
+            } catch(NotFoundException e) {
                 ISOException.throwIt(ISO7816.SW_FILE_NOT_FOUND);
             }
             break;
@@ -548,7 +553,7 @@ public class IsoFileSystem extends DedicatedFile {
             fid = Util.makeShort(buf[offset_cdata], buf[(short)(offset_cdata+1)]);
             try {
                 fileToSelect = getCurrentlySelectedDF().findChildrenRec(fid, SPECIFY_EF);
-            } catch(FileNotFoundException e) {
+            } catch(NotFoundException e) {
                 ISOException.throwIt(ISO7816.SW_FILE_NOT_FOUND);
             }
             break;
@@ -566,21 +571,21 @@ public class IsoFileSystem extends DedicatedFile {
         case 0x04: /* by DF name */
             try {
                 fileToSelect = findDedicatedFileByName(buf, offset_cdata, lc);
-            } catch(FileNotFoundException e) {
+            } catch(NotFoundException e) {
                 ISOException.throwIt(ISO7816.SW_FILE_NOT_FOUND);
             }
             break;
         case 0x08: /* Path from MF */
             try {
                 fileToSelect = this.findChildrenByPath(buf, offset_cdata, lc);
-            } catch(FileNotFoundException e) {
+            } catch(NotFoundException e) {
                 ISOException.throwIt(ISO7816.SW_FILE_NOT_FOUND);
             }
             break;
         case 0x09: /* Path from current DF */
             try {
                 fileToSelect = getCurrentlySelectedDF().findChildrenByPath(buf, offset_cdata, lc);
-            } catch(FileNotFoundException e) {
+            } catch(NotFoundException e) {
                 ISOException.throwIt(ISO7816.SW_FILE_NOT_FOUND);
             }
             break;
@@ -661,7 +666,7 @@ public class IsoFileSystem extends DedicatedFile {
             offset = p2;
             try {
                 ef = getCurrentlySelectedDF().findChildElementaryFileBySFI(sfi);
-            } catch(FileNotFoundException e) {
+            } catch(NotFoundException e) {
                 ISOException.throwIt(ISO7816.SW_FILE_NOT_FOUND);
             }
         } else if((p1 & 0x80) == 0x00) {
@@ -757,7 +762,7 @@ public class IsoFileSystem extends DedicatedFile {
             offset = p2;
             try {
                 ef = getCurrentlySelectedDF().findChildElementaryFileBySFI(sfi);
-            } catch(FileNotFoundException e) {
+            } catch(NotFoundException e) {
                 ISOException.throwIt(ISO7816.SW_FILE_NOT_FOUND);
             }
         } else if((p1 & 0x80) == 0x00) {
@@ -850,7 +855,7 @@ public class IsoFileSystem extends DedicatedFile {
         fileID = Util.getShort(buf, offset_cdata);
         try {
             fileToDelete = findFile(fileID, SPECIFY_ANY);
-        } catch (FileNotFoundException e) {
+        } catch (NotFoundException e) {
             ISOException.throwIt(ISO7816.SW_FILE_NOT_FOUND);
         }
 
@@ -869,7 +874,7 @@ public class IsoFileSystem extends DedicatedFile {
         // Remove from tree. Garbage collector has already been called by deleteChildren().
         try {
             getCurrentlySelectedDF().deleteChildren(fileID);
-        } catch(FileNotFoundException e) {
+        } catch(NotFoundException e) {
             ISOException.throwIt(ISO7816.SW_FILE_NOT_FOUND);
         }
     }
@@ -912,19 +917,19 @@ public class IsoFileSystem extends DedicatedFile {
         }
         offset_cdata = apdu.getOffsetCdata();
 
-        File fileToAdd = getSafeFile(buf, offset_cdata, lc); // getSafeFile performs permission checks.
-
-        // Add the file to the filesystem and select it.
-        if(fileToAdd != null) {
-            try {
-                addFile(fileToAdd);
-                selectFile(fileToAdd);
-            } catch(NotEnoughSpaceException e) {
-                ISOException.throwIt(ISO7816.SW_FILE_FULL);
-            }
-        } else {
+        try {
+            // Add the file to the filesystem and select it.
+            File fileToAdd = getSafeFile(buf, offset_cdata, lc); // getSafeFile performs permission checks.
+            addFile(fileToAdd);
+            selectFile(fileToAdd);
+        } catch (NotFoundException e) {
             ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+        } catch (InvalidArgumentsException e) {
+            ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+        } catch(NotEnoughSpaceException e) {
+            ISOException.throwIt(ISO7816.SW_FILE_FULL);
         }
+
         return;
     }
 

@@ -584,95 +584,61 @@ public class IsoApplet extends Applet implements ExtendedLength {
      *
      * \param key The EC key to initialize.
      *
-     * \throw ISOException SW_DATA_INVALID, SW_WRONG_DATA
+     * \throw NotFoundException Parts of the data needed to fully initialize
+     *                          the key were missing.
+     *
+     * \throw InvalidArgumentsException The ASN.1 sequence was malformatted.
      */
-    private void initEcParams(byte[] buf, short bOff, short bLen, ECKey key) throws ISOException {
+    private void initEcParams(byte[] buf, short bOff, short bLen, ECKey key) throws NotFoundException, InvalidArgumentsException {
         short pos = bOff;
         short len;
 
-
         /* Search for the prime */
         pos = UtilTLV.findTag(buf, bOff, bLen, (byte) 0x81);
-        if(pos < 0) {
-            ISOException.throwIt(ISO7816.SW_DATA_INVALID);
-        }
         pos++;
         len = UtilTLV.decodeLengthField(buf, pos);
-        if(len < 0) {
-            ISOException.throwIt(ISO7816.SW_DATA_INVALID);
-        }
         pos += UtilTLV.getLengthFieldLength(len);
         key.setFieldFP(buf, pos, len); // "p"
 
         /* Search for coefficient A */
         pos = UtilTLV.findTag(buf, bOff, bLen, (byte) 0x82);
-        if(pos < 0) {
-            ISOException.throwIt(ISO7816.SW_DATA_INVALID);
-        }
         pos++;
         len = UtilTLV.decodeLengthField(buf, pos);
-        if(len < 0) {
-            ISOException.throwIt(ISO7816.SW_DATA_INVALID);
-        }
         pos += UtilTLV.getLengthFieldLength(len);
         key.setA(buf, pos, len);
 
         /* Search for coefficient B */
         pos = UtilTLV.findTag(buf, bOff, bLen, (byte) 0x83);
-        if(pos < 0) {
-            ISOException.throwIt(ISO7816.SW_DATA_INVALID);
-        }
         pos++;
         len = UtilTLV.decodeLengthField(buf, pos);
-        if(len < 0) {
-            ISOException.throwIt(ISO7816.SW_DATA_INVALID);
-        }
         pos += UtilTLV.getLengthFieldLength(len);
         key.setB(buf, pos, len);
 
         /* Search for base point G */
         pos = UtilTLV.findTag(buf, bOff, bLen, (byte) 0x84);
-        if(pos < 0) {
-            ISOException.throwIt(ISO7816.SW_DATA_INVALID);
-        }
         pos++;
         len = UtilTLV.decodeLengthField(buf, pos);
-        if(len < 0) {
-            ISOException.throwIt(ISO7816.SW_DATA_INVALID);
-        }
         pos += UtilTLV.getLengthFieldLength(len);
         key.setG(buf, pos, len); // G(x,y)
 
         /* Search for order */
         pos = UtilTLV.findTag(buf, bOff, bLen, (byte) 0x85);
-        if(pos < 0) {
-            ISOException.throwIt(ISO7816.SW_DATA_INVALID);
-        }
         pos++;
         len = UtilTLV.decodeLengthField(buf, pos);
-        if(len < 0) {
-            ISOException.throwIt(ISO7816.SW_DATA_INVALID);
-        }
         pos += UtilTLV.getLengthFieldLength(len);
         key.setR(buf, pos, len); // Order of G - "q"
 
-        /* Search for cofactor*/
+        /* Search for cofactor */
         pos = UtilTLV.findTag(buf, bOff, bLen, (byte) 0x87);
-        if(pos < 0) {
-            ISOException.throwIt(ISO7816.SW_DATA_INVALID);
-        }
         pos++;
         len = UtilTLV.decodeLengthField(buf, pos);
-        if(len < 0) {
-            ISOException.throwIt(ISO7816.SW_DATA_INVALID);
-        }
         pos += UtilTLV.getLengthFieldLength(len);
         if(len == 2) {
             key.setK(Util.getShort(buf, pos));
         } else if(len == 1) {
             key.setK(buf[pos]);
         } else {
-            ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+            throw InvalidArgumentsException.getInstance();
         }
     }
 
@@ -739,13 +705,19 @@ public class IsoApplet extends Applet implements ExtendedLength {
             lc = doChainingOrExtAPDU(apdu);
 
             /* Search for prime */
-            short pos = UtilTLV.findTag(ram_buf, (short) 0, lc, (byte) 0x81);
-            if(pos < 0) {
+            short pos = 0;
+            try {
+                pos = UtilTLV.findTag(ram_buf, (short) 0, lc, (byte) 0x81);
+            } catch (NotFoundException e) {
+                ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+            } catch (InvalidArgumentsException e) {
                 ISOException.throwIt(ISO7816.SW_DATA_INVALID);
             }
             pos++;
-            short len = UtilTLV.decodeLengthField(ram_buf, pos);
-            if(len < 0) {
+            short len = 0;
+            try {
+                len = UtilTLV.decodeLengthField(ram_buf, pos);
+            } catch (InvalidArgumentsException e) {
                 ISOException.throwIt(ISO7816.SW_DATA_INVALID);
             }
             // Try to calculate field length frome prime length.
@@ -762,16 +734,29 @@ public class IsoApplet extends Applet implements ExtendedLength {
                 }
                 ISOException.throwIt(ISO7816.SW_UNKNOWN);
             }
-            initEcParams(ram_buf, (short) 0, lc, pubKey);
-            initEcParams(ram_buf, (short) 0, lc, privKey);
+            try {
+                initEcParams(ram_buf, (short) 0, lc, pubKey);
+                initEcParams(ram_buf, (short) 0, lc, privKey);
+            } catch (NotFoundException e) {
+                // Parts of the data needed to initialize the EC keys were missing.
+                ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+            } catch (InvalidArgumentsException e) {
+                // Malformatted ASN.1.
+                ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+            }
             kp.genKeyPair();
             keys[privKeyRef] = privKey;
 
             Util.arrayFillNonAtomic(ram_buf, (short)0, RAM_BUF_SIZE, (byte)0x00);
             ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_POS] = 0;
-
             // Return pubkey. See ISO7816-8 table 3.
-            sendECPublicKey(apdu, pubKey);
+            try {
+                sendECPublicKey(apdu, pubKey);
+            } catch (InvalidArgumentsException e) {
+                ISOException.throwIt(ISO7816.SW_UNKNOWN);
+            } catch (NotEnoughSpaceException e) {
+                ISOException.throwIt(ISO7816.SW_UNKNOWN);
+            }
             break;
 
         default:
@@ -898,122 +883,81 @@ public class IsoApplet extends Applet implements ExtendedLength {
      * \see ISO7816-8 table 3.
      *
      * \param The apdu to answer. setOutgoing() must not be called already.
+     *
+     * \throw InvalidArgumentsException Field length of the EC key provided can not be handled.
+     *
+     * \throw NotEnoughSpaceException ram_buf is too small to contain the EC key to send.
      */
-    private void sendECPublicKey(APDU apdu, ECPublicKey key) {
+    private void sendECPublicKey(APDU apdu, ECPublicKey key) throws InvalidArgumentsException, NotEnoughSpaceException {
         short pos = 0;
-        short field_bytes = (key.getSize()%8 == 0) ? (short)(key.getSize()/8) : (short)(key.getSize()/8+1);
-        short r, len;
+        final short field_bytes = (key.getSize()%8 == 0) ? (short)(key.getSize()/8) : (short)(key.getSize()/8+1);
+        short len, r;
 
         // Return pubkey. See ISO7816-8 table 3.
         len = (short)(7 // We have: 7 tags,
                       + (key.getSize() == LENGTH_EC_FP_521 ? 9 : 7) // 7 length fields, of which 2 are 2 byte fields when using 521 bit curves,
                       + 8 * field_bytes + 4); // 4 * field_len + 2 * 2 field_len + cofactor (2 bytes) + 2 * uncompressed tag
-        r = UtilTLV.writeTagAndLen((short)0x7F49, len, ram_buf, pos);
-        if(r > 0) {
-            pos += r;
-        } else {
-            ISOException.throwIt(ISO7816.SW_UNKNOWN);
-        }
+        pos += UtilTLV.writeTagAndLen((short)0x7F49, len, ram_buf, pos);
 
         // Prime - "P"
         len = field_bytes;
-        r = UtilTLV.writeTagAndLen((short)0x81, len, ram_buf, pos);
-        if(r > 0) {
-            pos += r;
-        } else {
-            ISOException.throwIt(ISO7816.SW_UNKNOWN);
-        }
+        pos += UtilTLV.writeTagAndLen((short)0x81, len, ram_buf, pos);
         r = key.getField(ram_buf, pos);
-        if(r == len) {
-            pos += len;
-        } else {
-            ISOException.throwIt(ISO7816.SW_UNKNOWN);
+        if(r != len) {
+            throw InvalidArgumentsException.getInstance();
         }
+        pos += len;
 
         // First coefficient - "A"
         len = field_bytes;
-        r = UtilTLV.writeTagAndLen((short)0x82, len, ram_buf, pos);
-        if(r > 0) {
-            pos += r;
-        } else {
-            ISOException.throwIt(ISO7816.SW_UNKNOWN);
-        }
+        pos += UtilTLV.writeTagAndLen((short)0x82, len, ram_buf, pos);
         r = key.getA(ram_buf, pos);
-        if(r == len) {
-            pos += len;
-        } else {
-            ISOException.throwIt(ISO7816.SW_UNKNOWN);
+        if(r != len) {
+            throw InvalidArgumentsException.getInstance();
         }
+        pos += len;
 
         // Second coefficient - "B"
         len = field_bytes;
-        r = UtilTLV.writeTagAndLen((short)0x83, len, ram_buf, pos);
-        if(r > 0) {
-            pos += r;
-        } else {
-            ISOException.throwIt(ISO7816.SW_UNKNOWN);
-        }
+        pos += UtilTLV.writeTagAndLen((short)0x83, len, ram_buf, pos);
         r = key.getB(ram_buf, pos);
-        if(r == len) {
-            pos += len;
-        } else {
-            ISOException.throwIt(ISO7816.SW_UNKNOWN);
+        if(r != len) {
+            throw InvalidArgumentsException.getInstance();
         }
+        pos += len;
 
         // Generator - "PB"
         len = (short)(1 + 2 * field_bytes);
-        r = UtilTLV.writeTagAndLen((short)0x84, len, ram_buf, pos);
-        if(r > 0) {
-            pos += r;
-        } else {
-            ISOException.throwIt(ISO7816.SW_UNKNOWN);
-        }
+        pos += UtilTLV.writeTagAndLen((short)0x84, len, ram_buf, pos);
         r = key.getG(ram_buf, pos);
-        if(r == len) {
-            pos += len;
-        } else {
-            ISOException.throwIt(ISO7816.SW_UNKNOWN);
+        if(r != len) {
+            throw InvalidArgumentsException.getInstance();
         }
+        pos += len;
 
         // Order - "Q"
         len = field_bytes;
-        r = UtilTLV.writeTagAndLen((short)0x85, len, ram_buf, pos);
-        if(r > 0) {
-            pos += r;
-        } else {
-            ISOException.throwIt(ISO7816.SW_UNKNOWN);
-        }
+        pos += UtilTLV.writeTagAndLen((short)0x85, len, ram_buf, pos);
         r = key.getR(ram_buf, pos);
-        if(r == len) {
-            pos += len;
-        } else {
-            ISOException.throwIt(ISO7816.SW_UNKNOWN);
+        if(r != len) {
+            throw InvalidArgumentsException.getInstance();
         }
+        pos += len;
 
         // Public key - "PP"
         len = (short)(1 + 2 * field_bytes);
-        r = UtilTLV.writeTagAndLen((short)0x86, len, ram_buf, pos);
-        if(r > 0) {
-            pos += r;
-        } else {
-            ISOException.throwIt(ISO7816.SW_UNKNOWN);
-        }
+        pos += UtilTLV.writeTagAndLen((short)0x86, len, ram_buf, pos);
         r = key.getW(ram_buf, pos);
-        if(r == len) {
-            pos += len;
-        } else {
-            ISOException.throwIt(ISO7816.SW_UNKNOWN);
+        if(r != len) {
+            throw InvalidArgumentsException.getInstance();
         }
+        pos += len;
 
         // Cofactor
-        r = UtilTLV.writeTagAndLen((short)0x87, (short)2, ram_buf, pos);
-        if(r > 0) {
-            pos += r;
-        } else {
-            ISOException.throwIt(ISO7816.SW_UNKNOWN);
-        }
+        len = 2;
+        pos += UtilTLV.writeTagAndLen((short)0x87, len, ram_buf, pos);
         Util.setShort(ram_buf, pos, key.getK());
-        pos+=2;
+        pos += 2;
 
         // ram_buf now contains the complete public key.
         apdu.setOutgoing();
@@ -1037,7 +981,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
         byte p1 = buf[ISO7816.OFFSET_P1];
         byte p2 = buf[ISO7816.OFFSET_P2];
         short lc;
-        short pos;
+        short pos = 0;
         short offset_cdata;
         byte algRef = 0;
         short privKeyRef = -1;
@@ -1065,28 +1009,32 @@ public class IsoApplet extends Applet implements ExtendedLength {
             // SET Computation, decipherment, internal authentication and key agreement.
 
             // Algorithm reference.
-            pos = UtilTLV.findTag(buf, offset_cdata, (byte) lc, (byte) 0x80);
-            if(pos >= 0) {
-                if(buf[++pos] != (byte) 0x01) { // Length must be 1.
-                    ISOException.throwIt(ISO7816.SW_DATA_INVALID);
-                }
-                // Set the current algorithm reference.
-                algRef = buf[++pos];
-            } else {
+            try {
+                pos = UtilTLV.findTag(buf, offset_cdata, (byte) lc, (byte) 0x80);
+            } catch (NotFoundException e) {
+                ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+            } catch (InvalidArgumentsException e) {
                 ISOException.throwIt(ISO7816.SW_DATA_INVALID);
             }
+            if(buf[++pos] != (byte) 0x01) { // Length must be 1.
+                ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+            }
+            // Set the current algorithm reference.
+            algRef = buf[++pos];
 
             // Private key reference (Index in keys[]-array).
-            pos = UtilTLV.findTag(buf, offset_cdata, (byte) lc, (byte) 0x84);
-            if(pos >= 0) {
-                if(buf[++pos] != (byte) 0x01 // Length: must be 1 - only one key reference (byte) provided.
-                        || buf[++pos] >= KEY_MAX_COUNT) { // Value: KEY_MAX_COUNT may not be exceeded. Valid key references are from 0..KEY_MAX_COUNT.
-                    ISOException.throwIt(ISO7816.SW_DATA_INVALID);
-                }
-                privKeyRef = buf[pos];
-            } else { // No key reference given.
+            try {
+                pos = UtilTLV.findTag(buf, offset_cdata, (byte) lc, (byte) 0x84);
+            } catch (NotFoundException e) {
+                ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+            } catch (InvalidArgumentsException e) {
                 ISOException.throwIt(ISO7816.SW_DATA_INVALID);
             }
+            if(buf[++pos] != (byte) 0x01 // Length: must be 1 - only one key reference (byte) provided.
+                    || buf[++pos] >= KEY_MAX_COUNT) { // Value: KEY_MAX_COUNT may not be exceeded. Valid key references are from 0..KEY_MAX_COUNT.
+                ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+            }
+            privKeyRef = buf[pos];
             break;
 
         case (byte) 0xF3:
@@ -1414,7 +1362,8 @@ public class IsoApplet extends Applet implements ExtendedLength {
      */
     private void importPrivateKey(APDU apdu) throws ISOException {
         short recvLen;
-        short offset, len;
+        short offset = 0;
+        short len = 0;
 
         if( ! pin.isValidated() ) {
             ISOException.throwIt(ISO7816.SW_SECURITY_STATUS_NOT_SATISFIED);
@@ -1426,18 +1375,18 @@ public class IsoApplet extends Applet implements ExtendedLength {
 
             // This ensures that all the data is located in ram_buf, beginning at zero.
             recvLen = doChainingOrExtAPDU(apdu);
-            offset = 0;
 
             // Parse the outer tag.
             if(ram_buf[offset] != (byte)0x7F && ram_buf[offset] != (byte)0x48) {
                 ISOException.throwIt(ISO7816.SW_WRONG_DATA);
             }
             offset += 2;
-            len = UtilTLV.decodeLengthField(ram_buf, offset);
-            if(len < (short)0) {
+            try {
+                len = UtilTLV.decodeLengthField(ram_buf, offset);
+                offset += UtilTLV.getLengthFieldLength(len);
+            } catch (InvalidArgumentsException e) {
                 ISOException.throwIt(ISO7816.SW_DATA_INVALID);
             }
-            offset += UtilTLV.getLengthFieldLength(len);
             if(len != (short)(recvLen - offset)) {
                 ISOException.throwIt(ISO7816.SW_DATA_INVALID);
             }
@@ -1445,7 +1394,13 @@ public class IsoApplet extends Applet implements ExtendedLength {
                 ISOException.throwIt(ISO7816.SW_DATA_INVALID);
             }
             // Import the key from the value field of the outer tag.
-            importRSAkey(ram_buf, offset, len);
+            try {
+                importRSAkey(ram_buf, offset, len);
+            } catch (InvalidArgumentsException e) {
+                ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+            } catch (NotFoundException e) {
+                ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+            }
             break;
 
         case ALG_GEN_EC:
@@ -1453,17 +1408,17 @@ public class IsoApplet extends Applet implements ExtendedLength {
 
             // This ensures that all the data is located in ram_buf, beginning at zero.
             recvLen = doChainingOrExtAPDU(apdu);
-            offset = 0;
 
             // Parse the outer tag.
             if( ram_buf[offset++] != (byte) 0xE0 ) {
                 ISOException.throwIt(ISO7816.SW_WRONG_DATA);
             }
-            len = UtilTLV.decodeLengthField(ram_buf, offset);
-            if(len < (short)0) {
+            try {
+                len = UtilTLV.decodeLengthField(ram_buf, offset);
+                offset += UtilTLV.getLengthFieldLength(len);
+            } catch (InvalidArgumentsException e) {
                 ISOException.throwIt(ISO7816.SW_DATA_INVALID);
             }
-            offset += UtilTLV.getLengthFieldLength(len);
             if(len != (short)(recvLen - offset)) {
                 ISOException.throwIt(ISO7816.SW_DATA_INVALID);
             }
@@ -1471,7 +1426,13 @@ public class IsoApplet extends Applet implements ExtendedLength {
                 ISOException.throwIt(ISO7816.SW_DATA_INVALID);
             }
             // Import the key from the value field of the outer tag.
-            importECkey(ram_buf, offset, len);
+            try {
+                importECkey(ram_buf, offset, len);
+            } catch (InvalidArgumentsException e) {
+                ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+            } catch (NotFoundException e) {
+                ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+            }
             break;
         default:
             ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
@@ -1542,11 +1503,17 @@ public class IsoApplet extends Applet implements ExtendedLength {
      *
      * \param bLen The length of the data in buf.
      *
-     * \throw ISOException SW_CONDITION_NOT_SATISFIED, SW_DATA_INVALID, SW_FUNC_NOT_SUPPORTED,
-     * 			SW_UNKNOWN.
+     * \throw ISOException SW_CONDITION_NOT_SATISFIED   The current algorithm reference does not match.
+     *                     SW_FUNC_NOT_SUPPORTED        Algorithm is unsupported by the card.
+     *           		   SW_UNKNOWN                   Unknown error.
+     *
+     * \throw NotFoundException The buffer does not contain all the information needed to import a private key.
+     *
+     * \throw InvalidArgumentsException The buffer is malformatted.
      */
-    private void importRSAkey(byte[] buf, short bOff, short bLen) throws ISOException {
-        short pos, len;
+    private void importRSAkey(byte[] buf, short bOff, short bLen) throws ISOException, NotFoundException, InvalidArgumentsException {
+        short pos = 0;
+        short len;
         RSAPrivateCrtKey rsaPrKey = null;
 
         if(currentAlgorithmRef[0] != ALG_GEN_RSA_2048) {
@@ -1564,16 +1531,13 @@ public class IsoApplet extends Applet implements ExtendedLength {
         }
 
         if( ! UtilTLV.isTLVconsistent(buf, bOff, bLen)) {
-            ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+            throw InvalidArgumentsException.getInstance();
         }
 
         /* Set P */
         pos = UtilTLV.findTag(buf, bOff, bLen, (byte)0x92);
         pos++;
         len = UtilTLV.decodeLengthField(buf, pos);
-        if(len < 0) {
-            ISOException.throwIt(ISO7816.SW_DATA_INVALID);
-        }
         pos += UtilTLV.getLengthFieldLength(len);
         rsaPrKey.setP(buf, pos, len);
 
@@ -1581,9 +1545,6 @@ public class IsoApplet extends Applet implements ExtendedLength {
         pos = UtilTLV.findTag(buf, bOff, bLen, (byte)0x93);
         pos++;
         len = UtilTLV.decodeLengthField(buf, pos);
-        if(len < 0) {
-            ISOException.throwIt(ISO7816.SW_DATA_INVALID);
-        }
         pos += UtilTLV.getLengthFieldLength(len);
         rsaPrKey.setQ(buf, pos, len);
 
@@ -1591,9 +1552,6 @@ public class IsoApplet extends Applet implements ExtendedLength {
         pos = UtilTLV.findTag(buf, bOff, bLen, (byte)0x94);
         pos++;
         len = UtilTLV.decodeLengthField(buf, pos);
-        if(len < 0) {
-            ISOException.throwIt(ISO7816.SW_DATA_INVALID);
-        }
         pos += UtilTLV.getLengthFieldLength(len);
         rsaPrKey.setPQ(buf, pos, len);
 
@@ -1601,9 +1559,6 @@ public class IsoApplet extends Applet implements ExtendedLength {
         pos = UtilTLV.findTag(buf, bOff, bLen, (byte)0x95);
         pos++;
         len = UtilTLV.decodeLengthField(buf, pos);
-        if(len < 0) {
-            ISOException.throwIt(ISO7816.SW_DATA_INVALID);
-        }
         pos += UtilTLV.getLengthFieldLength(len);
         rsaPrKey.setDP1(buf, pos, len);
 
@@ -1611,9 +1566,6 @@ public class IsoApplet extends Applet implements ExtendedLength {
         pos = UtilTLV.findTag(buf, bOff, bLen, (byte)0x96);
         pos++;
         len = UtilTLV.decodeLengthField(buf, pos);
-        if(len < 0) {
-            ISOException.throwIt(ISO7816.SW_DATA_INVALID);
-        }
         pos += UtilTLV.getLengthFieldLength(len);
         rsaPrKey.setDQ1(buf, pos, len);
 
@@ -1678,11 +1630,18 @@ public class IsoApplet extends Applet implements ExtendedLength {
      *
      * \param bLen The length of the data in buf.
      *
-     * \throw ISOException SW_CONDITION_NOT_SATISFIED, SW_DATA_INVALID,
-     *						SW_FUNC_NOT_SUPPORTED.
+     * \throw ISOException SW_CONDITION_NOT_SATISFIED   The current algorithm reference does not match.
+     *                     SW_FUNC_NOT_SUPPORTED        Algorithm is unsupported by the card.
+     *           		   SW_UNKNOWN                   Unknown error.
+     *
+     * \throw NotFoundException The buffer does not contain all the information needed to import a private key.
+     *
+     * \throw InvalidArgumentsException The buffer is malformatted.
      */
-    private void importECkey(byte[] buf, short bOff, short bLen) {
-        short pos, len, field_len;
+    private void importECkey(byte[] buf, short bOff, short bLen) throws InvalidArgumentsException, NotFoundException, ISOException {
+        short pos = 0;
+        short len;
+        short field_len;
         ECPrivateKey ecPrKey = null;
 
         if(currentAlgorithmRef[0] != ALG_GEN_EC) {
@@ -1691,14 +1650,8 @@ public class IsoApplet extends Applet implements ExtendedLength {
 
         // Search for prime
         pos = UtilTLV.findTag(buf, bOff, bLen, (byte) 0x81);
-        if(pos < 0) {
-            ISOException.throwIt(ISO7816.SW_DATA_INVALID);
-        }
         pos++;
         len = UtilTLV.decodeLengthField(buf, pos);
-        if(len < 0) {
-            ISOException.throwIt(ISO7816.SW_DATA_INVALID);
-        }
         // Try to calculate field length frome prime length.
         field_len = getEcFpFieldLength(len);
 
@@ -1718,9 +1671,6 @@ public class IsoApplet extends Applet implements ExtendedLength {
         pos = UtilTLV.findTag(buf, bOff, bLen, (byte)0x88);
         pos++;
         len = UtilTLV.decodeLengthField(buf, pos);
-        if(len < 0) {
-            ISOException.throwIt(ISO7816.SW_DATA_INVALID);
-        }
         pos += UtilTLV.getLengthFieldLength(len);
         ecPrKey.setS(buf, pos, len);
 

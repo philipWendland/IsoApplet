@@ -55,7 +55,15 @@ public abstract class File {
         this.fci = fileControlInformation;
         // Save the position of the ACL (Value field) in the FCI for performance reasons.
         // If the position is -1, then every action may be performed.
-        this.aclPos = UtilTLV.findTag(fci, (short) 2, fci[(short)1], (byte) 0x86);
+        short pos;
+        try {
+            pos = UtilTLV.findTag(fci, (short) 2, fci[(short)1], (byte) 0x86);
+        } catch (NotFoundException e) {
+            pos = -1;
+        } catch (InvalidArgumentsException e) {
+            pos = -1;
+        }
+        this.aclPos = pos;
     }
 
     /**

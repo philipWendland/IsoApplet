@@ -20,31 +20,31 @@
 package net.pwendland.javacard.pki.isoapplet;
 
 /**
- * \brief The FileNotFoundException class.
+ * \brief The NotFoundException class.
  *
- * Should be thrown whenever a specified file could not be found.
- * This class is a singleton in order to save resources.
+ * Should be thrown whenever a specified file or tag in a TLV structure
+ * could not be found. This class is a singleton in order to save resources.
  *
  * \attention This singleton is not thread-safe.
  */
-public class FileNotFoundException extends Exception {
-    public static FileNotFoundException instance;
+public class NotFoundException extends Exception {
+    public static NotFoundException instance;
 
     /**
      * \brief Private access constructor (Singleton pattern).
      */
-    private FileNotFoundException() {
+    private NotFoundException() {
 
     }
 
     /**
      * \brief Get the instance.
      *
-     * \return The FileNotFoundException instance.
+     * \return The NotFoundException instance.
      */
-    public static FileNotFoundException getInstance() {
+    public static NotFoundException getInstance() {
         if(instance == null) {
-            instance = new FileNotFoundException();
+            instance = new NotFoundException();
         }
         return instance;
     }

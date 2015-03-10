@@ -81,21 +81,32 @@ public class DedicatedFile extends File {
      *			true else.
      */
     public boolean isName(byte[] name, short offset, short length) {
+        short namePos;
         // Find the position of the DF name tag (84) in the FCI.
-        short namePos = UtilTLV.findTag(fci, (short)2, fci[(short)1], (byte) 0x84);
-        if(namePos < 0) {
+        try {
+            namePos = UtilTLV.findTag(fci, (short)2, fci[(short)1], (byte) 0x84);
+        } catch (NotFoundException e) {
             // This DF has no name.
             return false;
-        } else {
-            // This DF has a name.
+        } catch (InvalidArgumentsException e) {
+            return false;
+        }
+        // This DF has a name.
+        try {
             if(length != UtilTLV.decodeLengthField(fci, (short)(namePos+1))) {
                 // The names do not have equal length.
                 return false;
-            } else {
-                return ( (byte)0 == Util.arrayCompare(name, offset, fci,
-                                                      (short)(namePos+1+UtilTLV.getLengthFieldLength(length)), length) );
             }
+        } catch (InvalidArgumentsException e) {
+            return false;
         }
+        // Advance namePos from "tag" to value.
+        try {
+            namePos += 1 + UtilTLV.getLengthFieldLength(length);
+        } catch(InvalidArgumentsException e) {
+            return false;
+        }
+        return ( (byte)0 == Util.arrayCompare(name, offset, fci, namePos, length) );
     }
 
     /**
@@ -116,13 +127,13 @@ public class DedicatedFile extends File {
      * \param num The number of the children, starting at 0 to getChildrenCount(). The references can change when
      *				children had been deleted.
      *
-     * \throw FileNotFoundException If the specified file was not found unter this DF.
+     * \throw NotFoundException If the specified file was not found unter this DF.
      *
      * \return The children file if present. May be a DedicatedFile or any non-abstract ElementaryFile subclass.
      */
-    public File getChildren(byte num) throws FileNotFoundException {
+    public File getChildren(byte num) throws NotFoundException {
         if(num >= this.currentNumChildren) {
-            throw FileNotFoundException.getInstance();
+            throw NotFoundException.getInstance();
         }
         return children[num];
     }
@@ -134,9 +145,9 @@ public class DedicatedFile extends File {
      *
      * \param fileID The file ID of the children to delete.
      *
-     * \throw FileNotFoundException It no children has the given fileID.
+     * \throw NotFoundException It no children has the given fileID.
      */
-    public void deleteChildren(short fileID) throws FileNotFoundException {
+    public void deleteChildren(short fileID) throws NotFoundException {
         short childNum = -1;
         short i;
 
@@ -148,7 +159,7 @@ public class DedicatedFile extends File {
         }
 
         if(childNum == -1) {
-            throw FileNotFoundException.getInstance();
+            throw NotFoundException.getInstance();
         }
 
         children[childNum] = null;
@@ -225,11 +236,11 @@ public class DedicatedFile extends File {
      *
      * \param fileID The file ID of the EF to search.
      *
-     * \throw FileNotFoundException If the specified file was not found unter this DF.
+     * \throw NotFoundException If the specified file was not found unter this DF.
      *
      * \return The file if it was found.
      */
-    public ElementaryFile findChildElementaryFile (short fileID) throws FileNotFoundException {
+    public ElementaryFile findChildElementaryFile (short fileID) throws NotFoundException {
         short i = 0;
         for(i=0; i < currentNumChildren; i++) {
             if(children[i].getFileID() == fileID) {
@@ -239,10 +250,10 @@ public class DedicatedFile extends File {
                 }
                 // Should not happen: The elementary file that is being searched for is not a elementary file.
                 // (i.e. the fileID points to a DF.)
-                throw FileNotFoundException.getInstance();
+                throw NotFoundException.getInstance();
             }
         }
-        throw FileNotFoundException.getInstance();
+        throw NotFoundException.getInstance();
     }
 
     /**
@@ -250,13 +261,13 @@ public class DedicatedFile extends File {
      *
      * \param sfi The Short EF identifier (5 least significant bits).
      *
-     * \throw FileNotFoundException If the File could not be found.
+     * \throw NotFoundException If the File could not be found.
      *
      * \return The file if it was found.
      */
-    public ElementaryFile findChildElementaryFileBySFI (byte sfi) throws FileNotFoundException {
+    public ElementaryFile findChildElementaryFileBySFI (byte sfi) throws NotFoundException {
         if((sfi & 0xE0) > (byte) 0) {
-            throw FileNotFoundException.getInstance();
+            throw NotFoundException.getInstance();
         }
         short i;
         for(i=0; i < currentNumChildren; i++) {
@@ -265,7 +276,7 @@ public class DedicatedFile extends File {
                 return (ElementaryFile) children[i];
             }
         }
-        throw FileNotFoundException.getInstance();
+        throw NotFoundException.getInstance();
     }
 
     /**
@@ -275,11 +286,11 @@ public class DedicatedFile extends File {
      *
      * \param fileID The file ID of the DF to search
      *
-     * \throw FileNotFoundException If the specified file was not found unter this DF.
+     * \throw NotFoundException If the specified file was not found unter this DF.
      *
      * \return The file if it was found.
      */
-    public DedicatedFile findChildDedicatedFile(short fileID) throws FileNotFoundException {
+    public DedicatedFile findChildDedicatedFile(short fileID) throws NotFoundException {
         short i;
         for(i=0; i < currentNumChildren; i++) {
             if(children[i].getFileID() == fileID) {
@@ -289,10 +300,10 @@ public class DedicatedFile extends File {
                 }
                 // Should not happen: The dedicated file that is being searched for is not a dedicated file.
                 // (i.e. the fileID points to a EF.)
-                throw FileNotFoundException.getInstance();
+                throw NotFoundException.getInstance();
             }
         }
-        throw FileNotFoundException.getInstance();
+        throw NotFoundException.getInstance();
     }
 
     /**
@@ -304,11 +315,11 @@ public class DedicatedFile extends File {
      *
      * \param nameLength The length of the name
      *
-     * \throw FileNotFoundException If the specified file was not found among all (sub-)children of this file.
+     * \throw NotFoundException If the specified file was not found among all (sub-)children of this file.
      *
      * \return A reference to the DedicatedFile if found.
      */
-    public DedicatedFile findDedicatedFileByNameRec(byte[] name, short nameOffset, short nameLength) throws FileNotFoundException {
+    public DedicatedFile findDedicatedFileByNameRec(byte[] name, short nameOffset, short nameLength) throws NotFoundException {
         short i;
         for(i=0; i < currentNumChildren; i++) {
             if(children[i] instanceof DedicatedFile) {
@@ -317,12 +328,12 @@ public class DedicatedFile extends File {
                 }
                 try {
                     return ((DedicatedFile)children[i]).findDedicatedFileByNameRec(name, nameOffset, nameLength);
-                } catch(FileNotFoundException e) {
+                } catch(NotFoundException e) {
                     // Ignore this exception until the last children has unsuccessfully been visited.
                 }
             }
         }
-        throw FileNotFoundException.getInstance();
+        throw NotFoundException.getInstance();
     }
 
     /**
@@ -330,11 +341,11 @@ public class DedicatedFile extends File {
      *
      * \param fileID The file ID of the file to search for.
      *
-     * \throw FileNotFoundException If the specified file was not found among all (sub-)children of this file.
+     * \throw NotFoundException If the specified file was not found among all (sub-)children of this file.
      *
      * \return A reference to the File if found.
      */
-    public File findChildrenRec(short fileID, byte flag) throws FileNotFoundException {
+    public File findChildrenRec(short fileID, byte flag) throws NotFoundException {
         short i;
         for(i=0; i < currentNumChildren; i++) {
             if(children[i].getFileID() == fileID) {
@@ -344,18 +355,18 @@ public class DedicatedFile extends File {
                     return children[i];
                 } else {
                     // File with specified FID and requested file type do not match.
-                    throw FileNotFoundException.getInstance();
+                    throw NotFoundException.getInstance();
                 }
             }
             if(children[i] instanceof DedicatedFile) {
                 try {
                     return ((DedicatedFile)children[i]).findChildrenRec(fileID, flag);
-                } catch(FileNotFoundException e) {
+                } catch(NotFoundException e) {
                     // Ignore this exception until the last children has unsuccessfully been visited.
                 }
             }
         }
-        throw FileNotFoundException.getInstance();
+        throw NotFoundException.getInstance();
     }
 
     /**
@@ -367,11 +378,11 @@ public class DedicatedFile extends File {
      *
      * \param pathLength The length of the path in bytes. Two times the FIDs contained.
      *
-     * \throw FileNotFoundException If the path does not lead to a file.
+     * \throw NotFoundException If the path does not lead to a file.
      *
      * \return The File if found.
      */
-    public File findChildrenByPath(byte[] path, short pathOffset, short pathLength) throws FileNotFoundException {
+    public File findChildrenByPath(byte[] path, short pathOffset, short pathLength) throws NotFoundException {
         byte childPos;
         short pathPos;
         short nextFileID;
@@ -394,13 +405,13 @@ public class DedicatedFile extends File {
                     } else {
                         // Matching file ID, has children according to path, but is no DF.
                         // Something really bad happened or the path was invalid!
-                        throw FileNotFoundException.getInstance();
+                        throw NotFoundException.getInstance();
                     }
                 }
             }
         }
         // We could not find the file with that path.
-        throw FileNotFoundException.getInstance();
+        throw NotFoundException.getInstance();
     }
 
 }
