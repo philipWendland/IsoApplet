@@ -43,7 +43,7 @@ public class ElementaryFileLinearFixed extends ElementaryFileLinearVariable {
      *				later (e.g. the apdu buffer). Max length 257 bytes as the length
      *				of the FCI Tag (6F) must be a byte.
      *
-     * \attention To be safe, use FileFactory.getSafeFile() to instantiate files.
+     * \attention To be safe, use IsoFilesystem.getSafeFile() to instantiate files.
      *
      * \throw IllegalArgumentException If necessary tags in the FCI are missing.
      */
