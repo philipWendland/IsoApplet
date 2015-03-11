@@ -19,6 +19,8 @@
 
 package net.pwendland.javacard.pki.isoapplet;
 
+import javacard.framework.Util;
+
 /**
  * \brief The ElementaryFileLinearVariable class.
  *
@@ -50,6 +52,19 @@ public class ElementaryFileLinearVariable extends ElementaryFile {
         super(fileID, fileControlInformation);
         this.records = new Record[maxRecords];
         this.currentRecordCount = 0;
+    }
+
+    /**
+     * \brief Clear the contents of the file.
+     */
+    @Override
+    void clearContents() {
+        short i;
+
+        for(i = 0; i < currentRecordCount; i++) {
+            Util.arrayFillNonAtomic(records[i].data, (short)0, (short)records[i].data.length, (byte)0);
+            records[i] = null;
+        }
     }
 
     /**

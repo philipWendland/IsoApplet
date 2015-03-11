@@ -69,6 +69,22 @@ public class DedicatedFile extends File {
     }
 
     /**
+     * \brief Clear the contents of the file.
+     *
+     * When deleting a DedicatedFile, all children will be lost as well.
+     * Their content should be cleared as well.
+     */
+    @Override
+    void clearContents() {
+        short i;
+
+        for(i = 0; i < currentNumChildren; i++) {
+            children[i].clearContents();
+            children[i] = null;
+        }
+    }
+
+    /**
      * \brief Check if this is the name of this DedicatedFile.
      *
      * \param name The array containing the name to compare with the file's name.
@@ -162,6 +178,11 @@ public class DedicatedFile extends File {
             throw NotFoundException.getInstance();
         }
 
+        if( ! JCSystem.isObjectDeletionSupported()) {
+            // Old file will stay as garbage in the EEPROM - at least clear the contents.
+            children[childNum].clearContents();
+        }
+
         children[childNum] = null;
         currentNumChildren--; // We have one less children now.
 
@@ -172,7 +193,9 @@ public class DedicatedFile extends File {
         }
 
         // Clean up the old file object.
-        JCSystem.requestObjectDeletion();
+        if(JCSystem.isObjectDeletionSupported()) {
+            JCSystem.requestObjectDeletion();
+        }
     }
 
     /**
@@ -202,7 +225,9 @@ public class DedicatedFile extends File {
                 }
             }
             children = newChildren; // Initial children array is now garbage.
-            JCSystem.requestObjectDeletion();
+            if(JCSystem.isObjectDeletionSupported()) {
+                JCSystem.requestObjectDeletion();
+            }
         } // We have enough space (now).
         children[currentNumChildren++] = childFile;
         return;

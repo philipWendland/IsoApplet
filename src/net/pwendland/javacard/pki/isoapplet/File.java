@@ -135,5 +135,11 @@ public abstract class File {
         return this.fci;
     }
 
-
+    /**
+     * \brief Clear the contents of the file.
+     *
+     * Used when deleting files and JCSystem.requestObjectDeletion() is not
+     * implemented.
+     */
+    abstract void clearContents();
 }

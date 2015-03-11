@@ -162,7 +162,6 @@ public class IsoApplet extends Applet implements ExtendedLength {
      * \brief Only this class's install method should create the applet object.
      */
     protected IsoApplet() {
-        JCSystem.requestObjectDeletion(); // Check if the method is implemented by the JCVM.
         pin = new OwnerPIN(PIN_MAX_TRIES, PIN_MAX_LENGTH);
         puk = new OwnerPIN(PUK_MAX_TRIES, PUK_LENGTH);
         fs = new IsoFileSystem();
@@ -691,7 +690,13 @@ public class IsoApplet extends Applet implements ExtendedLength {
                 ISOException.throwIt(ISO7816.SW_UNKNOWN);
             }
             kp.genKeyPair();
+            if(keys[privKeyRef] != null) {
+                keys[privKeyRef].clearKey();
+            }
             keys[privKeyRef] = kp.getPrivate();
+            if(JCSystem.isObjectDeletionSupported()) {
+                JCSystem.requestObjectDeletion();
+            }
 
             // Return pubkey. See ISO7816-8 table 3.
             sendRSAPublicKey(apdu, ((RSAPublicKey)(kp.getPublic())));
@@ -745,7 +750,13 @@ public class IsoApplet extends Applet implements ExtendedLength {
                 ISOException.throwIt(ISO7816.SW_DATA_INVALID);
             }
             kp.genKeyPair();
+            if(keys[privKeyRef] != null) {
+                keys[privKeyRef].clearKey();
+            }
             keys[privKeyRef] = privKey;
+            if(JCSystem.isObjectDeletionSupported()) {
+                JCSystem.requestObjectDeletion();
+            }
 
             Util.arrayFillNonAtomic(ram_buf, (short)0, RAM_BUF_SIZE, (byte)0x00);
             ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_POS] = 0;
@@ -1573,7 +1584,13 @@ public class IsoApplet extends Applet implements ExtendedLength {
             // If the key is usable, it MUST NOT remain in buf.
             JCSystem.beginTransaction();
             Util.arrayFillNonAtomic(buf, bOff, bLen, (byte)0x00);
+            if(keys[currentPrivateKeyRef[0]] != null) {
+                keys[currentPrivateKeyRef[0]].clearKey();
+            }
             keys[currentPrivateKeyRef[0]] = rsaPrKey;
+            if(JCSystem.isObjectDeletionSupported()) {
+                JCSystem.requestObjectDeletion();
+            }
             JCSystem.commitTransaction();
         } else {
             ISOException.throwIt(ISO7816.SW_DATA_INVALID);
@@ -1678,7 +1695,13 @@ public class IsoApplet extends Applet implements ExtendedLength {
             // If the key is usable, it MUST NOT remain in buf.
             JCSystem.beginTransaction();
             Util.arrayFillNonAtomic(buf, bOff, bLen, (byte)0x00);
+            if(keys[currentPrivateKeyRef[0]] != null) {
+                keys[currentPrivateKeyRef[0]].clearKey();
+            }
             keys[currentPrivateKeyRef[0]] = ecPrKey;
+            if(JCSystem.isObjectDeletionSupported()) {
+                JCSystem.requestObjectDeletion();
+            }
             JCSystem.commitTransaction();
         } else {
             ISOException.throwIt(ISO7816.SW_DATA_INVALID);

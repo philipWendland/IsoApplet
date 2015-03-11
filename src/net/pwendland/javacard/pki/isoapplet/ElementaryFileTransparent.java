@@ -19,6 +19,8 @@
 
 package net.pwendland.javacard.pki.isoapplet;
 
+import javacard.framework.Util;
+
 /**
  * \brief The ElementaryFileTransparent class.
  *
@@ -46,6 +48,14 @@ public class ElementaryFileTransparent extends ElementaryFile {
     public ElementaryFileTransparent(short fileID, byte[] fileControlInformation, byte[] data) {
         super(fileID, fileControlInformation);
         this.data = data;
+    }
+
+    /**
+     * \brief Clear the contents of the file.
+     */
+    @Override
+    void clearContents() {
+        Util.arrayFillNonAtomic(this.data, (short)0, (short)data.length, (byte)0);
     }
 
     /**
