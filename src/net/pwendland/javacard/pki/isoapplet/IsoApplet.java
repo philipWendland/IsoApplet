@@ -24,6 +24,7 @@ import javacard.framework.ISO7816;
 import javacard.framework.ISOException;
 import javacard.framework.APDU;
 import javacard.framework.JCSystem;
+import javacard.framework.SystemException;
 import javacard.framework.Util;
 import javacard.framework.OwnerPIN;
 import javacard.security.KeyBuilder;
@@ -162,7 +163,12 @@ public class IsoApplet extends Applet implements ExtendedLength {
      * \brief Only this class's install method should create the applet object.
      */
     protected IsoApplet() {
-        JCSystem.requestObjectDeletion(); // Check if the method is implemented by the JCVM.
+        try {
+            // Check if the method is implemented by the JCVM.
+            JCSystem.requestObjectDeletion();
+        } catch(SystemException e) {
+            // ignore error
+        }
         pin = new OwnerPIN(PIN_MAX_TRIES, PIN_MAX_LENGTH);
         puk = new OwnerPIN(PUK_MAX_TRIES, PUK_LENGTH);
         fs = new IsoFileSystem();
