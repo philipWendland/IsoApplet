@@ -1,10 +1,10 @@
 General Information
 ===================
-The Java Card IsoApplet (e.g. for use with the corresponding OpenSC-fork).
-The Applet is capable of saving a PKCS#15 file structure and performing PKI related operations 
-using the private key, such as signing or decrypting. Also, on-card generation of asymmetric 
-key-pairs is the only way to get usable private keys onto the smartcard.
-The Applet targets mordern Smartcards. Anything below Java Card 2.2.2 is untested.
+The Java Card IsoApplet (e.g. for use with OpenSC).
+The Applet is capable of saving a PKCS#15 file structure and performing PKI related operations using the private key, such as signing or decrypting.
+Private keys can be generated directly on the smartcard or imported from the host computer.
+The import of private keys is disabled in the default security configuration.
+The Applet targets mordern Smartcards with Java Card 2.2.2 or above.
 
 
 **For more information please visit:** http://www.pwendland.net/IsoApplet
@@ -16,12 +16,11 @@ applet.
 
 Smartcard requirements
 ----------------------
-* Java Card 2.2.2 or above (>= 3.0.1 recommended) 
-* Implementation of the "requestObjectDeletion()"-mechanism to properly delete files
-  (My JCOP 2.4.1 card can do this, but it is unclear whether any JCOP 2.4.1 card is capable.)
+* Java Card version 2.2.2 or above
+* Implementation of the "requestObjectDeletion()"-mechanism of the Java Card API is recommended to be able to properly delete files.
 * Support of javacardx.apdu.ExtendedLength if extended APDUs are to be used
 * Support of javacardx.crypto.Cipher
-* Support of FP ECC if ECDSA is to be used (field lengths of 192 and 256 Bit are supported)
+* Support of FP ECC with the corresponding field size if ECDSA is to be used
 
 Build requirements
 ------------------
