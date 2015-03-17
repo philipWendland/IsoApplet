@@ -672,11 +672,6 @@ public class IsoApplet extends Applet implements ExtendedLength {
                 ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
             }
 
-            // For RSA key generation, lc should be zero.
-            lc = apdu.setIncomingAndReceive();
-            if(lc != 0) {
-                ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
-            }
             // Command chaining might be used for ECC, but not for RSA.
             if(isCommandChainingCLA(apdu)) {
                 ISOException.throwIt(ISO7816.SW_COMMAND_CHAINING_NOT_SUPPORTED);

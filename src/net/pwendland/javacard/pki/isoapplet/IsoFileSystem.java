@@ -653,11 +653,6 @@ public class IsoFileSystem extends DedicatedFile {
             ISOException.throwIt(ISO7816.SW_FUNC_NOT_SUPPORTED);
         }
 
-        // We expect a case 2 APDU (CLA|INS|P1|P2|Le)
-        if(apdu.setIncomingAndReceive() != (short) 0) {
-            ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
-        }
-
         // Check P1 and P2.
         short offset = -1; // offset in data in EF
         ElementaryFile ef = null;
