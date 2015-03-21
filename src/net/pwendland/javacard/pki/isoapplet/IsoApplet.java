@@ -744,7 +744,13 @@ public class IsoApplet extends Applet implements ExtendedLength {
                 // Malformatted ASN.1.
                 ISOException.throwIt(ISO7816.SW_DATA_INVALID);
             }
-            kp.genKeyPair();
+            try {
+                kp.genKeyPair();
+            } catch (CryptoException e) {
+                if(e.getReason() == CryptoException.ILLEGAL_VALUE) {
+                    ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+                }
+            }
             if(keys[privKeyRef] != null) {
                 keys[privKeyRef].clearKey();
             }
@@ -909,7 +915,12 @@ public class IsoApplet extends Applet implements ExtendedLength {
         len = field_bytes;
         pos += UtilTLV.writeTagAndLen((short)0x81, len, ram_buf, pos);
         r = key.getField(ram_buf, pos);
-        if(r != len) {
+        if(r < len) {
+            // If the parameter has fewer bytes than the field length, we fill
+            // the MSB's with zeroes.
+            Util.arrayCopyNonAtomic(ram_buf, pos, ram_buf, (short)(pos+len-r), (short)(len-r));
+            Util.arrayFillNonAtomic(ram_buf, pos, r, (byte)0x00);
+        } else if (r > len) {
             throw InvalidArgumentsException.getInstance();
         }
         pos += len;
@@ -918,7 +929,10 @@ public class IsoApplet extends Applet implements ExtendedLength {
         len = field_bytes;
         pos += UtilTLV.writeTagAndLen((short)0x82, len, ram_buf, pos);
         r = key.getA(ram_buf, pos);
-        if(r != len) {
+        if(r < len) {
+            Util.arrayCopyNonAtomic(ram_buf, pos, ram_buf, (short)(pos+len-r), (short)(len-r));
+            Util.arrayFillNonAtomic(ram_buf, pos, r, (byte)0x00);
+        } else if (r > len) {
             throw InvalidArgumentsException.getInstance();
         }
         pos += len;
@@ -927,7 +941,10 @@ public class IsoApplet extends Applet implements ExtendedLength {
         len = field_bytes;
         pos += UtilTLV.writeTagAndLen((short)0x83, len, ram_buf, pos);
         r = key.getB(ram_buf, pos);
-        if(r != len) {
+        if(r < len) {
+            Util.arrayCopyNonAtomic(ram_buf, pos, ram_buf, (short)(pos+len-r), (short)(len-r));
+            Util.arrayFillNonAtomic(ram_buf, pos, r, (byte)0x00);
+        } else if (r > len) {
             throw InvalidArgumentsException.getInstance();
         }
         pos += len;
@@ -936,7 +953,10 @@ public class IsoApplet extends Applet implements ExtendedLength {
         len = (short)(1 + 2 * field_bytes);
         pos += UtilTLV.writeTagAndLen((short)0x84, len, ram_buf, pos);
         r = key.getG(ram_buf, pos);
-        if(r != len) {
+        if(r < len) {
+            Util.arrayCopyNonAtomic(ram_buf, pos, ram_buf, (short)(pos+len-r), (short)(len-r));
+            Util.arrayFillNonAtomic(ram_buf, pos, r, (byte)0x00);
+        } else if (r > len) {
             throw InvalidArgumentsException.getInstance();
         }
         pos += len;
@@ -945,7 +965,10 @@ public class IsoApplet extends Applet implements ExtendedLength {
         len = field_bytes;
         pos += UtilTLV.writeTagAndLen((short)0x85, len, ram_buf, pos);
         r = key.getR(ram_buf, pos);
-        if(r != len) {
+        if(r < len) {
+            Util.arrayCopyNonAtomic(ram_buf, pos, ram_buf, (short)(pos+len-r), (short)(len-r));
+            Util.arrayFillNonAtomic(ram_buf, pos, r, (byte)0x00);
+        } else if (r > len) {
             throw InvalidArgumentsException.getInstance();
         }
         pos += len;
@@ -954,7 +977,10 @@ public class IsoApplet extends Applet implements ExtendedLength {
         len = (short)(1 + 2 * field_bytes);
         pos += UtilTLV.writeTagAndLen((short)0x86, len, ram_buf, pos);
         r = key.getW(ram_buf, pos);
-        if(r != len) {
+        if(r < len) {
+            Util.arrayCopyNonAtomic(ram_buf, pos, ram_buf, (short)(pos+len-r), (short)(len-r));
+            Util.arrayFillNonAtomic(ram_buf, pos, r, (byte)0x00);
+        } else if (r > len) {
             throw InvalidArgumentsException.getInstance();
         }
         pos += len;
