@@ -38,6 +38,7 @@ import javacardx.crypto.Cipher;
 import javacardx.apdu.ExtendedLength;
 import javacard.security.CryptoException;
 import javacard.security.Signature;
+import javacard.security.RandomData;
 
 /**
  * \brief The IsoApplet class.
@@ -75,6 +76,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
     public static final byte INS_PERFORM_SECURITY_OPERATION = (byte) 0x2A;
     public static final byte INS_GET_RESPONSE = (byte) 0xC0;
     public static final byte INS_PUT_DATA = (byte) 0xDB;
+    public static final byte INS_GET_CHALLENGE = (byte) 0x84;
     // Status words:
     public static final short SW_PIN_TRIES_REMAINING = 0x63C0; // See ISO 7816-4 section 7.5.1
     public static final short SW_COMMAND_NOT_ALLOWED_GENERAL = 0x6900;
@@ -110,6 +112,9 @@ public class IsoApplet extends Applet implements ExtendedLength {
     private static final byte STATE_OPERATIONAL_DEACTIVATED = (byte) 0x04; // Applet usage is deactivated. (Unused at the moment.)
     private static final byte STATE_TERMINATED = (byte) 0x0C; // Applet usage is terminated. (Unused at the moment.)
 
+    private static final byte API_FEATURE_EXT_APDU = (byte) 0x01;
+    private static final byte API_FEATURE_SECURE_RANDOM = (byte) 0x02;
+
     /* Other constants */
     // "ram_buf" is used for:
     //	* GET RESPONSE (caching for response APDUs):
@@ -142,7 +147,9 @@ public class IsoApplet extends Applet implements ExtendedLength {
     private short[] ram_chaining_cache = null;
     private Cipher rsaPkcs1Cipher = null;
     private Signature ecdsaSignature = null;
+    private RandomData randomData = null;
     private byte api_features;
+
 
     /**
      * \brief Installs this applet.
@@ -162,6 +169,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
      * \brief Only this class's install method should create the applet object.
      */
     protected IsoApplet() {
+        api_features = 0;
         pin = new OwnerPIN(PIN_MAX_TRIES, PIN_MAX_LENGTH);
         puk = new OwnerPIN(PUK_MAX_TRIES, PUK_LENGTH);
         fs = new IsoFileSystem();
@@ -174,14 +182,23 @@ public class IsoApplet extends Applet implements ExtendedLength {
 
         rsaPkcs1Cipher = Cipher.getInstance(Cipher.ALG_RSA_PKCS1, false);
         ecdsaSignature = Signature.getInstance(Signature.ALG_ECDSA_SHA, false);
-
-        state = STATE_CREATION;
-
-        api_features = 0;
-        if(DEF_EXT_APDU) {
-            api_features |= 0x01;
+        try {
+            randomData = RandomData.getInstance(RandomData.ALG_SECURE_RANDOM);
+            api_features |= API_FEATURE_SECURE_RANDOM;
+        } catch (CryptoException e) {
+            if(e.getReason() == CryptoException.NO_SUCH_ALGORITHM) {
+                randomData = null;
+                api_features &= ~API_FEATURE_SECURE_RANDOM;
+            } else {
+                throw e;
+            }
         }
 
+        if(DEF_EXT_APDU) {
+            api_features |= API_FEATURE_EXT_APDU;
+        }
+
+        state = STATE_CREATION;
         register();
     }
 
@@ -321,6 +338,9 @@ public class IsoApplet extends Applet implements ExtendedLength {
                 break;
             case INS_PUT_DATA:
                 processPutData(apdu);
+                break;
+            case INS_GET_CHALLENGE:
+                processGetChallenge(apdu);
                 break;
             default:
                 ISOException.throwIt(ISO7816.SW_INS_NOT_SUPPORTED);
@@ -1727,6 +1747,39 @@ public class IsoApplet extends Applet implements ExtendedLength {
         } else {
             ISOException.throwIt(ISO7816.SW_DATA_INVALID);
         }
+    }
+
+
+    /**
+     * \brief Process the GET CHALLENGE instruction (INS=0x84).
+     *
+     * The host may request a random number of length "Le". This random number
+     * is currently _not_ used for any cryptographic function (e.g. secure
+     * messaging) by the applet.
+     *
+     * \param apdu The GET CHALLENGE apdu with P1P2=0000.
+     *
+     * \throw ISOException SW_INCORRECT_P1P2, SW_WRONG_LENGTH, SW_FUNC_NOT_SUPPORTED.
+     */
+    private void processGetChallenge(APDU apdu) {
+        byte[] buf = apdu.getBuffer();
+        byte p1 = buf[ISO7816.OFFSET_P1];
+        byte p2 = buf[ISO7816.OFFSET_P2];
+
+        if(randomData == null) {
+            ISOException.throwIt(ISO7816.SW_FUNC_NOT_SUPPORTED);
+        }
+
+        if(p1 != 0x00 || p1 != 0x00) {
+            ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
+        }
+        short le = apdu.setOutgoing();
+        if(le <= 0 || le > 256) {
+            ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
+        }
+        randomData.generateData(buf, (short)0, le);
+        apdu.setOutgoingLength(le);
+        apdu.sendBytes((short)0, le);
     }
 
 } // class IsoApplet
