@@ -1319,16 +1319,17 @@ public class IsoApplet extends Applet implements ExtendedLength {
         short lc;
         short sigLen = 0;
 
-        // Receive.
-        // Bytes received must be Lc.
-        lc = apdu.setIncomingAndReceive();
-        if(lc != apdu.getIncomingLength()) {
-            ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
-        }
-        offset_cdata = apdu.getOffsetCdata();
 
         switch(currentAlgorithmRef[0]) {
         case ALG_RSA_PAD_PKCS1:
+            // Receive.
+            // Bytes received must be Lc.
+            lc = apdu.setIncomingAndReceive();
+            if(lc != apdu.getIncomingLength()) {
+                ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
+            }
+            offset_cdata = apdu.getOffsetCdata();
+
             // RSA signature operation.
             RSAPrivateCrtKey rsaKey = (RSAPrivateCrtKey) keys[currentPrivateKeyRef[0]];
 
@@ -1353,10 +1354,6 @@ public class IsoApplet extends Applet implements ExtendedLength {
             // checks have been done in MANAGE SECURITY ENVIRONMENT.
             ECPrivateKey ecKey = (ECPrivateKey) keys[currentPrivateKeyRef[0]];
 
-            final short blocksize = 64; // SHA-1 block size.
-            short length = lc;
-            short pos = offset_cdata;
-
             // Initialisation should be done when:
             // 	- No command chaining is performed at all.
             //	- Command chaining is performed and this is the first apdu in the chain.
@@ -1367,20 +1364,19 @@ public class IsoApplet extends Applet implements ExtendedLength {
                 }
             }
 
-            while(length > 0) {
-                if(length > blocksize) {
-                    ecdsaSignature.update(buf, pos, blocksize);
-                    pos += blocksize;
-                    length -= blocksize;
-                } else {
-                    ecdsaSignature.update(buf, pos, length);
-                    pos += length;
-                    length = 0;
-                }
+            short recvLen = apdu.setIncomingAndReceive();
+            offset_cdata = apdu.getOffsetCdata();
+
+            // Receive data. For extended APDUs, the data is received piecewise
+            // and aggregated in the hash. When using short APDUs, command
+            // chaining is performed.
+            while (recvLen > 0) {
+                ecdsaSignature.update(buf, offset_cdata, recvLen);
+                recvLen = apdu.receiveBytes(offset_cdata);
             }
 
             if(!isCommandChainingCLA(apdu)) {
-                sigLen = ecdsaSignature.sign(buf, pos, length, buf, (short) 0);
+                sigLen = ecdsaSignature.sign(buf, (short)0, (short)0, buf, (short) 0);
                 ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_POS] = (short) 0;
                 apdu.setOutgoingAndSend((short) 0, sigLen);
             } else {
