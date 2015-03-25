@@ -55,7 +55,7 @@ import javacard.security.RandomData;
 public class IsoApplet extends Applet implements ExtendedLength {
     /* API Version */
     public static final byte API_VERSION_MAJOR = (byte) 0x00;
-    public static final byte API_VERSION_MINOR = (byte) 0x05;
+    public static final byte API_VERSION_MINOR = (byte) 0x06;
 
     /* Card-specific configuration */
     public static final boolean DEF_EXT_APDU = false;
