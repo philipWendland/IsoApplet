@@ -1249,20 +1249,8 @@ public class IsoApplet extends Applet implements ExtendedLength {
         short lc;
         short decLen = -1;
 
-        if(DEF_EXT_APDU && buf.length >= 267 && !isCommandChainingCLA(apdu)) {
-            // The data to be received is only 257 bytes plus cla, ins etc.
-            // If we use extended APDUs and the apdu buffer is large enough, a single receive will suffice.
-            // This reduces execution time.
-            lc = apdu.setIncomingAndReceive();
-            if(lc != apdu.getIncomingLength()) {
-                ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
-            }
-            offset_cdata = apdu.getOffsetCdata();
-        } else {
-            lc = doChainingOrExtAPDU(apdu);
-            buf = ram_buf;
-            offset_cdata = 0;
-        }
+        lc = doChainingOrExtAPDU(apdu);
+        offset_cdata = 0;
 
         // Padding indicator should be "No further indication".
         if(buf[offset_cdata] != (byte) 0x00) {
@@ -1285,8 +1273,8 @@ public class IsoApplet extends Applet implements ExtendedLength {
 
             rsaPkcs1Cipher.init(theKey, Cipher.MODE_DECRYPT);
             try {
-                decLen = rsaPkcs1Cipher.doFinal(buf, (short)(offset_cdata+1), (short)(lc-1),
-                                                apdu.getBuffer(), (short) 0);
+                decLen = rsaPkcs1Cipher.doFinal(ram_buf, (short)(offset_cdata+1), (short)(lc-1),
+                                                buf, (short) 0);
             } catch(CryptoException e) {
                 ISOException.throwIt(ISO7816.SW_WRONG_DATA);
             }
@@ -1338,15 +1326,19 @@ public class IsoApplet extends Applet implements ExtendedLength {
             }
 
             rsaPkcs1Cipher.init(rsaKey, Cipher.MODE_ENCRYPT);
-            sigLen = rsaPkcs1Cipher.doFinal(buf, offset_cdata, lc, buf, (short)0);
+            sigLen = rsaPkcs1Cipher.doFinal(buf, offset_cdata, lc, ram_buf, (short)0);
 
-            // Should not happen - RSA output is 256 Bytes. But better safe than sorry ;-)
-            if(sigLen > buf.length) {
+            if(sigLen != 256) {
                 ISOException.throwIt(ISO7816.SW_UNKNOWN);
             }
 
             // A single short APDU can handle 256 bytes - only one send operation neccessary.
-            apdu.setOutgoingAndSend((short) 0, sigLen);
+            short le = apdu.setOutgoing();
+            if(le < sigLen) {
+                ISOException.throwIt(ISO7816.SW_CORRECT_LENGTH_00);
+            }
+            apdu.setOutgoingLength(sigLen);
+            apdu.sendBytesLong(ram_buf, (short) 0, sigLen);
             break;
 
         case ALG_ECDSA_SHA1:
