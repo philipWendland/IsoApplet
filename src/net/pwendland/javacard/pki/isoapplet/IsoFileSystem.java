@@ -686,13 +686,11 @@ public class IsoFileSystem extends DedicatedFile {
         }
 
         // Le: Length of expected data (i.e. max length of data to read).
-        short le = (short)(buf[(short)4] & 0x00FF);
-        if(le == 0) {
-            le = 256;
-        }
+        short le = apdu.setOutgoing();
+        byte[] fileData = efTr.getData();
 
         // Offset in bounds?
-        if( ((offset) >= efTr.getData().length)
+        if( ((offset) >= fileData.length)
                 || (offset < 0) ) {
             ISOException.throwIt(SW_OFFSET_OUTSIDE_EF);
         }
@@ -703,15 +701,12 @@ public class IsoFileSystem extends DedicatedFile {
          * The host may request all the data (up to 256 Bytes) with Le=00, but the data might be smaller.
          * This is a valid request; we have to send all the data (even if less than 256 Bytes).
          */
-        if((short) (le+offset) >= (short) efTr.getData().length) {
-            le = (short)((short)(efTr.getData().length) - offset);
+        if((short) (le+offset) >= (short) fileData.length) {
+            le = (short)((short)(fileData.length) - offset);
         }
 
-        // Read.
-        Util.arrayCopy(efTr.getData(), offset, buf, (short) 0, le);
-
-        // Send.
-        apdu.setOutgoingAndSend((short) 0, le);
+        apdu.setOutgoingLength(le);
+        apdu.sendBytesLong(fileData, offset, le);
     }
 
 
