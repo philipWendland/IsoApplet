@@ -103,6 +103,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
     private static final short LENGTH_EC_FP_256 = 256;
     private static final short LENGTH_EC_FP_320 = 320;
     private static final short LENGTH_EC_FP_384 = 384;
+    private static final short LENGTH_EC_FP_512 = 512;
     private static final short LENGTH_EC_FP_521 = 521;
 
     /* Card/Applet lifecycle states */
@@ -943,7 +944,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
 
         // Return pubkey. See ISO7816-8 table 3.
         len = (short)(7 // We have: 7 tags,
-                      + (key.getSize() == LENGTH_EC_FP_521 ? 9 : 7) // 7 length fields, of which 2 are 2 byte fields when using 521 bit curves,
+                      + (key.getSize() >= LENGTH_EC_FP_512 ? 9 : 7) // 7 length fields, of which 2 are 2 byte fields when using 521 bit curves,
                       + 8 * field_bytes + 4); // 4 * field_len + 2 * 2 field_len + cofactor (2 bytes) + 2 * uncompressed tag
         pos += UtilTLV.writeTagAndLen((short)0x7F49, len, ram_buf, pos);
 
@@ -1669,6 +1670,8 @@ public class IsoApplet extends Applet implements ExtendedLength {
             return LENGTH_EC_FP_320;
         case 48:
             return LENGTH_EC_FP_384;
+        case 64:
+            return LENGTH_EC_FP_512;
         case 66:
             return LENGTH_EC_FP_521;
         default:
