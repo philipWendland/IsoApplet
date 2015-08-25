@@ -730,7 +730,7 @@ public class IsoFileSystem extends DedicatedFile {
         byte p1 = buf[ISO7816.OFFSET_P1];
         byte p2 = buf[ISO7816.OFFSET_P2];
         short lc;
-        short offset_cdata;
+        short recvLen;
 
         // Check INS: We only support INS=D6 at the moment.
         if(buf[ISO7816.OFFSET_INS] == (byte) 0xD7) {
@@ -738,18 +738,15 @@ public class IsoFileSystem extends DedicatedFile {
         }
 
         // Bytes received must be Lc.
-        lc = apdu.setIncomingAndReceive();
-        if(lc != apdu.getIncomingLength()) {
-            ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
-        }
-        offset_cdata = apdu.getOffsetCdata();
+        recvLen = apdu.setIncomingAndReceive();
+        lc = apdu.getIncomingLength();
 
         // Check P1 and P2.
-        short offset = -1; // offset in data in EF
+        short offsetFile = -1; // offset in data in EF
         ElementaryFile ef = null;
         if((p1 & 0xE0) == 0x80) {
             byte sfi = (byte)(p1 & 0x1F);
-            offset = p2;
+            offsetFile = p2;
             try {
                 ef = getCurrentlySelectedDF().findChildElementaryFileBySFI(sfi);
             } catch(NotFoundException e) {
@@ -758,8 +755,8 @@ public class IsoFileSystem extends DedicatedFile {
         } else if((p1 & 0x80) == 0x00) {
             // P1P2 except the most significant bit of P1 form the offset
             // This number can be up to 32767. Exactly what a signed short can hold! ;-)
-            offset = (short)((short)(p1 & 0x7F) << (short)8);
-            offset |= (short)(p2 & 0x00FF);
+            offsetFile = (short)((short)(p1 & 0x7F) << (short)8);
+            offsetFile |= (short)(p2 & 0x00FF);
             ef = getCurrentlySelectedEF();
         } else {
             ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
@@ -776,10 +773,15 @@ public class IsoFileSystem extends DedicatedFile {
             ISOException.throwIt(SW_COMMAND_INCOMPATIBLE_WITH_FILE_STRUCTURE);
         }
 
-        // The data field should contain the new data.
-        if(((short) efTr.getData().length >= (short) (offset+lc)) // Check for data array overflow/out-of-bounds.
-                && ((short) ((short)32767-offset) >= lc)) { // Check for possible short overflow.
-            Util.arrayCopy(buf, offset_cdata, efTr.getData(), offset, lc);
+        // Update file.
+        if(((short) efTr.getData().length >= (short) (offsetFile+lc)) // Check for data array overflow/out-of-bounds.
+                && ((short) ((short)32767-offsetFile) >= lc)) { // Check for possible short overflow.
+            short offsetCdata = apdu.getOffsetCdata();
+            while(recvLen > 0) {
+                Util.arrayCopy(buf, offsetCdata, efTr.getData(), offsetFile, recvLen);
+                offsetFile += recvLen;
+                recvLen = apdu.receiveBytes(offsetCdata);
+            }
             selectFile(ef);
         } else {
             ISOException.throwIt(SW_OFFSET_OUTSIDE_EF);
