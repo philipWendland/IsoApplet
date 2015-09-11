@@ -1245,7 +1245,6 @@ public class IsoApplet extends Applet implements ExtendedLength {
      *						SW_WRONG_DATA
      */
     private void decipher(APDU apdu) {
-        byte[] buf = apdu.getBuffer();
         short offset_cdata;
         short lc;
         short decLen = -1;
@@ -1254,7 +1253,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
         offset_cdata = 0;
 
         // Padding indicator should be "No further indication".
-        if(buf[offset_cdata] != (byte) 0x00) {
+        if(ram_buf[offset_cdata] != (byte) 0x00) {
             ISOException.throwIt(ISO7816.SW_WRONG_DATA);
         }
 
@@ -1275,7 +1274,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
             rsaPkcs1Cipher.init(theKey, Cipher.MODE_DECRYPT);
             try {
                 decLen = rsaPkcs1Cipher.doFinal(ram_buf, (short)(offset_cdata+1), (short)(lc-1),
-                                                buf, (short) 0);
+                                                apdu.getBuffer(), (short) 0);
             } catch(CryptoException e) {
                 ISOException.throwIt(ISO7816.SW_WRONG_DATA);
             }
