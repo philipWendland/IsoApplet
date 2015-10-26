@@ -77,6 +77,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
     public static final byte INS_GET_RESPONSE = (byte) 0xC0;
     public static final byte INS_PUT_DATA = (byte) 0xDB;
     public static final byte INS_GET_CHALLENGE = (byte) 0x84;
+    public static final byte INS_GET_DATA = (byte) 0xCA;
     // Status words:
     public static final short SW_PIN_TRIES_REMAINING = 0x63C0; // See ISO 7816-4 section 7.5.1
     public static final short SW_COMMAND_NOT_ALLOWED_GENERAL = 0x6900;
@@ -255,16 +256,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
         byte buffer[] = apdu.getBuffer();
         byte ins = buffer[ISO7816.OFFSET_INS];
 
-        // Return the API version if we are being selected.
-        // Format:
-        //  - byte 0: Major version
-        //  - byte 1: Minor version
-        //  - byte 2: Feature bitmap (used to distinguish between applet features)
         if(selectingApplet()) {
-            buffer[0] = API_VERSION_MAJOR;
-            buffer[1] = API_VERSION_MINOR;
-            buffer[2] = api_features;
-            apdu.setOutgoingAndSend((short) 0, (short) 3);
             return;
         }
 
@@ -322,6 +314,9 @@ public class IsoApplet extends Applet implements ExtendedLength {
                 break;
             case INS_READ_BINARY:
                 fs.processReadBinary(apdu);
+                break;
+            case INS_GET_DATA:
+                processGetData(apdu);
                 break;
             case INS_VERIFY:
                 processVerify(apdu);
@@ -382,6 +377,41 @@ public class IsoApplet extends Applet implements ExtendedLength {
     static boolean isCommandChainingCLA(APDU apdu) {
         byte[] buf = apdu.getBuffer();
         return ((byte)(buf[0] & (byte)0x10) == (byte)0x10);
+    }
+
+    /**
+     * \brief Process the GET DATA apdu (INS = CA)
+     *
+     * This APDU can be used to request the following data:
+     *   P1P2 = 0x1001: Applet version and features
+     *
+     * \param apdu The apdu to process.
+     */
+    private void processGetData(APDU apdu) throws ISOException {
+        byte[] buf = apdu.getBuffer();
+        byte ins = buf[ISO7816.OFFSET_INS];
+        byte p1 = buf[ISO7816.OFFSET_P1];
+        byte p2 = buf[ISO7816.OFFSET_P2];
+
+        if(ins != (byte) 0xCA) {
+            ISOException.throwIt(ISO7816.SW_INS_NOT_SUPPORTED);
+        }
+
+        if(p1 == (byte) 0x01) {
+            switch(p2) {
+            case (byte) 0x01:
+                buf[0] = API_VERSION_MAJOR;
+                buf[1] = API_VERSION_MINOR;
+                buf[2] = api_features;
+                apdu.setOutgoingAndSend((short) 0, (short) 3);
+                break;
+
+            default:
+                ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
+            }
+        } else {
+            ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
+        }
     }
 
     /**
