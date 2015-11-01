@@ -240,6 +240,8 @@ public class IsoApplet extends Applet implements ExtendedLength {
         } else {
             fs.setUserAuthenticated(false);
         }
+        // Reset file selection state
+        fs.selectFile(null);
         return true;
     }
 
