@@ -6,7 +6,7 @@ Private keys can be generated directly on the smartcard or imported from the hos
 The import of private keys is disabled in the default security configuration.
 The applet targets mordern Smartcards with Java Card 2.2.2 or above.
 
-**For more information please visit:** http://www.pwendland.net/IsoApplet
+**Have a look at the wiki for more information:** https://github.com/philipWendland/IsoApplet/wiki
 
 Smartcard requirements
 ======================
