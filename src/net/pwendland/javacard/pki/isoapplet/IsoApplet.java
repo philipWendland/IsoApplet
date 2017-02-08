@@ -1442,7 +1442,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
             recvLen = doChainingOrExtAPDU(apdu);
 
             // Parse the outer tag.
-            if(ram_buf[offset] != (byte)0x7F && ram_buf[offset] != (byte)0x48) {
+            if(ram_buf[offset] != (byte)0x7F && ram_buf[(short)(offset+1)] != (byte)0x48) {
                 ISOException.throwIt(ISO7816.SW_WRONG_DATA);
             }
             offset += 2;
