@@ -74,7 +74,6 @@ public class DedicatedFile extends File {
      * When deleting a DedicatedFile, all children will be lost as well.
      * Their content should be cleared as well.
      */
-    @Override
     void clearContents() {
         short i;
 

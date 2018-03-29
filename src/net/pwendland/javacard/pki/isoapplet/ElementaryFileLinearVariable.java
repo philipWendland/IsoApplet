@@ -57,7 +57,6 @@ public class ElementaryFileLinearVariable extends ElementaryFile {
     /**
      * \brief Clear the contents of the file.
      */
-    @Override
     void clearContents() {
         short i;
 

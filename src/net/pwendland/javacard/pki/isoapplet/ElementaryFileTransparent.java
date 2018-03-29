@@ -53,7 +53,6 @@ public class ElementaryFileTransparent extends ElementaryFile {
     /**
      * \brief Clear the contents of the file.
      */
-    @Override
     void clearContents() {
         Util.arrayFillNonAtomic(this.data, (short)0, (short)data.length, (byte)0);
     }

@@ -1,0 +1,374 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+*** GENERATED FROM project.xml - DO NOT EDIT  ***
+***         EDIT ../build.xml INSTEAD         ***
+
+        -->
+<project name="IsoApplet-impl" basedir="..">
+    <property file="nbproject/project.properties"/>
+    <!--nbproject/private.properties contains a pointer to the IDE's global build.properties-->
+    <property file="nbproject/private/private.properties"/>
+    <!--Load that, and it in turn will contain a pointer to the properties file representing the active platform, named jcproject.$PLATFORM_ACTIVE-->
+    <property file="${user.properties.file}"/>
+    <!--Load *that* file and we've got keys and values for the bootclasspath and everything else we need to know about the javacard platform-->
+    <!--Resolve a nested property so we can read the card platform definition-->
+    <macrodef name="resolveProperty">
+        <attribute name="property"/>
+        <attribute name="value"/>
+        <sequential>
+            <property name="tmp1.@{property}" value="@{value}"/>
+            <doResolveProperty property="@{property}" value="${tmp1.@{property}}"/>
+        </sequential>
+    </macrodef>
+    <macrodef name="doResolveProperty">
+        <attribute name="property"/>
+        <attribute name="value"/>
+        <sequential>
+            <property name="@{property}" value="${@{value}}"/>
+        </sequential>
+    </macrodef>
+    <macrodef name="resolvePropertyWithoutBrackets">
+        <attribute name="property"/>
+        <attribute name="value"/>
+        <sequential>
+            <property name="tmp1.@{property}" value="@{value}"/>
+            <doResolvePropertyWithoutBrackets property="@{property}" value="tmp1.@{property}"/>
+        </sequential>
+    </macrodef>
+    <macrodef name="doResolvePropertyWithoutBrackets">
+        <attribute name="property"/>
+        <attribute name="value"/>
+        <sequential>
+            <property name="@{property}" value="${@{value}}"/>
+        </sequential>
+    </macrodef>
+    <property environment="env"/>
+    <property name="deployment.type.arg" value="classic-applet"/>
+    <target name="-init-environment" depends="init-platform-properties,init-ri-properties,init-device-properties,init-keystore">
+        <condition property="device.properties.found">
+            <or>
+                <available file="${platform.device.file.path}"/>
+                <istrue value="${javacard.build.no.device.file}"/>
+            </or>
+        </condition>
+        <available file="${user.properties.file}" property="user.properties.file.set"/>
+    </target>
+    <target name="init-platform-properties">
+        <property name="platform.properties.file.key" value="jcplatform.${platform.active}"/>
+        <resolveProperty property="computed.file.path" value="${platform.properties.file.key}"/>
+        <echo>Using JavaCard Platform Definition at ${computed.file.path}</echo>
+        <available file="${computed.file.path}" property="platform.properties.found"/>
+        <fail unless="platform.properties.found">
+
+Java Card platform properties file not found.  Was expecting to find an
+entry named jcplatform.${platform.active} in ${user.properties.file} which
+would point to a properties file containing the path to the Java Card
+runtime and other information such as memory settings.
+
+To fix this problem, open this project in the NetBeans IDE.  In
+Tools | Java Platforms, click Add Platform.  Select Java Card Platform from
+the choices of platform kinds.  Locate your copy of a Java Card runtime on
+disk.  Then right click this project in the Project tab, and make sure
+the project is set up to use the Java Card Platform you have just defined.
+
+Data about the path to the emulator is not stored in version control by
+default, as it will differ between user machines.
+
+                </fail>
+        <property file="${computed.file.path}"/>
+        <fail unless="javacard.home">
+javacard.home not set.  This property should be set to a valid path on disk
+to a Java Card Runtime install.
+
+                </fail>
+        <available file="${javacard.home}" property="javacard.home.found"/>
+        <fail unless="javacard.home.found">
+javacard.home set to ${javacard.home} in ${computed.file.path},
+but ${javacard.home} does not exist on disk.
+                </fail>
+        <condition property="use.preprocessor">
+            <istrue value="${compile.use.preprocessor}"/>
+        </condition>
+        <echo>Java Card Home is ${javacard.home} (${javacard.name})</echo>
+    </target>
+    <target name="init-keystore" if="sign.bundle">
+        <property name="keystore.unresolved" value="${sign.keystore}"/>
+        <resolvePropertyWithoutBrackets property="keystore.resolved" value="${keystore.unresolved}"/>
+        <echo>Keystore is ${keystore.resolved}</echo>
+    </target>
+    <target name="init-ri-properties" if="javacard.wrap.ri">
+        <echo>Loading RI Properties from ${javacard.ri.properties.path}</echo>
+        <property file="${javacard.ri.properties.path}"/>
+        <available property="rifound" file="${javacard.ri.home}"/>
+    </target>
+    <target name="init-device-properties" unless="javacard.build.no.device.file">
+        <property name="platform.device.folder.path" value="jcplatform.${platform.active}.devicespath"/>
+        <echo>Platform device property name is ${platform.device.folder.path}</echo>
+        <resolveProperty property="computed.device.folder.path" value="${platform.device.folder.path}"/>
+        <echo>Computed device folder path is ${computed.device.folder.path}</echo>
+        <property name="platform.device.file.path" value="${computed.device.folder.path}${file.separator}${active.device}.${javacard.device.file.extension}"/>
+        <echo>Platform device file path property name is ${platform.device.file.path}</echo>
+        <property file="${platform.device.file.path}"/>
+        <echo>Deploying to device ${javacard.device.name} http port ${javacard.device.httpPort}</echo>
+    </target>
+    <target name="__set_for_debug__">
+        <property name="_fordebug_" value="true"/>
+    </target>
+    <property name="emulator.executable" value="${javacard.emulator}"/>
+    <available file="${emulator.executable}" property="emulator.found"/>
+    <target name="--init-jcdevkit-home-from-private-properties" depends="-init-environment">
+        <property file="nbproject/private/platform-private.properties"/>
+        <fail unless="user.properties.file.set">
+
+user.properties.file not set in nbproject/private/private.properties.
+This should be set to the path on disk to the global NetBeans build.properties
+(usually ${user.home}/.netbeans/7.0/build.properties or similar).
+
+This file in turn contains a property jcplatform.${platform.active} which is a
+path to a properties file which contains properties of the Java Card
+platform this project will be run on, such as the path to the emulator
+and other data.
+
+To fix this problem, open this project in the NetBeans IDE.  In
+Tools | Java Platforms, click Add Platform.  Select Java Card Platform from
+the choices of platform kinds.  Locate your copy of a Java Card runtime on
+disk.  Then right click this project in the Project tab, and make sure
+the project is set up to use the Java Card Platform you have just defined.
+
+Data about the path to the emulator is not stored in version control by
+default, as it will differ between user machines.
+
+                </fail>
+    </target>
+    <target name="-init" depends="--init-jcdevkit-home-from-private-properties">
+        <property name="jcdk.lib" location="${javacard.home}/lib"/>
+        <path id="javacard.classpath">
+            <pathelement location="${javacard.classic.bootclasspath}"/>
+        </path>
+        <path id="javacard.tasks.path">
+            <pathelement path="${javacard.nbtasksClassPath}"/>
+            <pathelement path="${javacard.toolClassPath}"/>
+            <!--Incorrect but appears to have been used at some point:-->
+            <pathelement path="${javacard.toolClasspath}"/>
+        </path>
+        <taskdef name="jc-pack" classname="${javacard.tasks.packTaskClass}">
+            <classpath>
+                <path refid="javacard.tasks.path"/>
+            </classpath>
+        </taskdef>
+        <taskdef name="jc-sign" classname="${javacard.tasks.signTaskClass}">
+            <classpath>
+                <path refid="javacard.tasks.path"/>
+            </classpath>
+        </taskdef>
+        <taskdef name="jc-proxy" classname="${javacard.tasks.proxyTaskClass}">
+            <classpath>
+                <path refid="javacard.tasks.path"/>
+            </classpath>
+        </taskdef>
+        <taskdef name="jc-load" classname="${javacard.tasks.loadTaskClass}">
+            <classpath>
+                <path refid="javacard.tasks.path"/>
+            </classpath>
+        </taskdef>
+        <taskdef name="jc-create" classname="${javacard.tasks.createTaskClass}">
+            <classpath>
+                <path refid="javacard.tasks.path"/>
+            </classpath>
+        </taskdef>
+        <taskdef name="jc-delete" classname="${javacard.tasks.deleteTaskClass}">
+            <classpath>
+                <path refid="javacard.tasks.path"/>
+            </classpath>
+        </taskdef>
+        <taskdef name="jc-unload" classname="${javacard.tasks.unloadTaskClass}">
+            <classpath>
+                <path refid="javacard.tasks.path"/>
+            </classpath>
+        </taskdef>
+        <mkdir dir="${build.dir}"/>
+        <mkdir dir="${build.meta.inf.dir}"/>
+        <mkdir dir="${build.classes.dir}"/>
+        <mkdir dir="${dist.dir}"/>
+        <mkdir dir="${build.applet.inf.dir}"/>
+    </target>
+    <target name="__reset_for_debug__">
+        <property name="_fordebug_" value="false"/>
+    </target>
+    <target name="create-descriptors">
+        <copy todir="${build.applet.inf.dir}">
+            <fileset dir="${applet.inf.dir}"/>
+        </copy>
+        <copy todir="${build.meta.inf.dir}">
+            <fileset dir="${meta.inf.dir}"/>
+        </copy>
+    </target>
+    <target name="pack" depends="unpack-dependencies,compile,compile-with-preprocessor,compile-proxies,create-descriptors,create-static-pages,do-pack"/>
+    <target name="do-pack">
+        <jc-pack failonerror="true"/>
+    </target>
+    <target name="sign" depends="pack,do-sign"/>
+    <target name="do-sign" if="sign.bundle" depends="pack">
+        <jc-sign failonerror="true"/>
+    </target>
+    <target name="-print-message-for-use-my-proxies">
+        <echo>
+    ${proxies.count} proxy source(s) were generated to './${proxy.generation.dir}'
+    ${new.count} new sources were copied to './${src.proxies.dir}'
+    
+    Note: existing proxy sources at './${src.proxies.dir}' weren't replaced or removed.
+    Only new ones were added. To replace any of existing proxy sources with generated ones
+    or remove unnecessary sources you need to delete corresponding source files from 
+    './${src.proxies.dir}'. You can see *all* generated sources at './${proxy.generation.dir}'.
+                    </echo>
+        <echo/>
+    </target>
+    <target name="generate-sio-proxies" depends="-init,compile,create-descriptors">
+        <delete dir="${proxy.generation.dir}"/>
+        <mkdir dir="${proxy.generation.dir}"/>
+        <jc-proxy failonerror="true"/>
+        <fileset dir="${proxy.generation.dir}" includes="**/proxy/*.java" id="proxies.new">
+            <present present="srconly" targetdir="${src.proxies.dir}"/>
+        </fileset>
+        <resourcecount property="new.count" refid="proxies.new"/>
+        <copy todir="${src.proxies.dir}" overwrite="false">
+            <fileset refid="proxies.new"/>
+        </copy>
+        <resourcecount property="proxies.count">
+            <fileset dir="${proxy.generation.dir}" includes="**/proxy/*.java"/>
+        </resourcecount>
+        <antcall target="-print-message-for-use-my-proxies"/>
+    </target>
+    <target name="run" depends="__reset_for_debug__, build, load-bundle, create-instance, run-client"/>
+    <target name="run-for-debug" depends="__set_for_debug__, build, load-bundle, create-instance, run-client"/>
+    <target name="build" depends="pack,sign"/>
+    <target name="load-bundle" depends="load-dependencies">
+        <waitfor>
+            <http url="${javacard.device.cardmanagerurl}"/>
+        </waitfor>
+        <jc-delete failonerror="no"/>
+        <jc-load failonerror="yes"/>
+    </target>
+    <target name="create-instance" depends="-init">
+        <waitfor>
+            <http url="${javacard.device.cardmanagerurl}"/>
+        </waitfor>
+        <jc-create failonerror="yes"/>
+    </target>
+    <target name="delete-instance" depends="-init">
+        <waitfor>
+            <http url="${javacard.device.cardmanagerurl}"/>
+        </waitfor>
+        <jc-delete failonerror="yes"/>
+    </target>
+    <target name="unload-bundle" depends="-init">
+        <waitfor>
+            <http url="${javacard.device.cardmanagerurl}"/>
+        </waitfor>
+        <jc-unload failonerror="yes"/>
+        <antcall target="unload-dependencies"/>
+    </target>
+    <target name="run-client" if="run.apdutool">
+        <!---->
+        <antcall target="run-script" inheritall="true" inheritrefs="true"/>
+    </target>
+    <target name="run-script" if="run.script">
+        <property name="script.target" value="${basedir}/${run.script}"/>
+        <available file="${script.target}" property="script.target.found"/>
+        <fail unless="script.target.found">No file found at ${script.target}</fail>
+        <echo>Invoking apdutool on ${script.target}</echo>
+        <java classname="${javacard.apdutoolClass}" dir="${javacard.home}/bin" classpath="${javacard.toolClassPath}" fork="true" failonerror="${param_failonerror}">
+            <arg value="${javacard.device.apdutool.contactedProtocol}"/>
+            <arg value="-p"/>
+            <arg value="${javacard.device.contactedPort}"/>
+            <arg value="${script.target}"/>
+        </java>
+    </target>
+    <target name="help">
+        <echo>
+help  - Displays this help message
+clean - Cleans the project
+build - Creates the deployable bundle (This is default target)
+run   - Builds and deploys the application and starts the browser.
+
+                </echo>
+    </target>
+    <target name="clean">
+        <delete dir="${build.dir}"/>
+        <delete dir="${dist.dir}"/>
+    </target>
+    <target name="compile" depends="-init" unless="use.preprocessor">
+        <javac destdir="${build.classes.dir}" source="${javac.source}" target="${javac.target}" nowarn="${javac.deprecation}" debug="${javac.debug}" optimize="no" bootclasspath="${javacard.bootclasspath}" includeAntRuntime="no">
+            <src path="${src.dir}"/>
+            <classpath id="compile.path"/>
+        </javac>
+        <condition property="compile.proxies">
+            <and>
+                <isset property="use.my.proxies"/>
+                <equals arg1="${use.my.proxies}" arg2="true"/>
+                <available file="${src.proxies.dir}" type="dir"/>
+            </and>
+        </condition>
+        <copy todir="${build.classes.dir}">
+            <fileset dir="${src.dir}" includes="${includes}" excludes="${excludes}"/>
+        </copy>
+    </target>
+    <target name="compile-with-preprocessor" depends="-init" if="use.preprocessor">
+        <javac destdir="${build.classes.dir}" source="${javac.source}" target="${javac.target}" nowarn="${javac.deprecation}" debug="${javac.debug}" optimize="no" bootclasspath="${javacard.bootclasspath}" includeAntRuntime="no">
+            <src path="${src.dir}"/>
+            <classpath id="compile.path"/>
+            <compilerarg line="-processor com.oracle.javacard.stringproc.StringConstantsProcessor"/>
+            <compilerarg value="-processorpath"/>
+            <compilerarg path="${javacard.classic.bootclasspath};${javacard.toolClassPath}"/>
+        </javac>
+        <condition property="compile.proxies">
+            <and>
+                <isset property="use.my.proxies"/>
+                <equals arg1="${use.my.proxies}" arg2="true"/>
+                <available file="${src.proxies.dir}" type="dir"/>
+            </and>
+        </condition>
+        <copy todir="${build.classes.dir}">
+            <fileset dir="${src.dir}" includes="${includes}" excludes="${excludes}"/>
+        </copy>
+    </target>
+    <target name="compile-proxies" if="compile.proxies">
+        <javac destdir="${build.classes.dir}" source="${javac.source}" target="${javac.target}" nowarn="${javac.deprecation}" debug="${javac.debug}" optimize="no" includeAntRuntime="no" includes="**/proxy/*.java">
+            <bootclasspath>
+                <pathelement location="${javacard.bootclasspath}"/>
+            </bootclasspath>
+            <classpath refid="compile.path"/>
+            <src path="${src.proxies.dir}"/>
+        </javac>
+    </target>
+    <target name="all" depends="build"/>
+    <target name="--run-apdutool--" depends="-init">
+        <!---->
+        <property name="script.target" value="${apdu.script.file}"/>
+        <echo>Sending apdu script file ${script.target}.</echo>
+        <java classname="${javacard.apdutoolClass}" dir="${javacard.home}/bin" classpath="${javacard.toolClassPath}" fork="true" failonerror="${param_failonerror}">
+            <arg value="${javacard.device.apdutool.contactedProtocol}"/>
+            <arg value="-p"/>
+            <arg value="${javacard.device.contactedPort}"/>
+            <arg value="${script.target}"/>
+        </java>
+    </target>
+    <target name="create-static-pages" depends="-init">
+        <copy todir="${build.dir}" failonerror="false">
+            <fileset dir="${scripts.dir}"/>
+        </copy>
+    </target>
+    <target name="load-dependencies" depends="build-dependencies">
+        <jc-unload failonerror="no"/>
+    </target>
+    <target name="unload-dependencies"/>
+    <target name="unpack-dependencies" depends="-init,build-dependencies">
+        <mkdir dir="${build.classes.dir}"/>
+    </target>
+    <target name="build-dependencies" depends="-init" unless="dont.build.dependencies">
+        <property name="export.path" value=""/>
+    </target>
+    <target name="clean-dependencies" depends="-init" unless="dont.build.dependencies"/>
+    <target name="clean-with-dependencies" description="Cleans this project and any projects it depends on" depends="clean,clean-dependencies"/>
+    <target name="build-with-dependencies" description="Builds any projects this project depends on, then builds this project" depends="build-dependencies,pack"/>
+</project>

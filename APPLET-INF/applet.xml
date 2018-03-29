@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<applet-app xmlns="http://java.sun.com/xml/ns/javacard"
+           xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+           xsi:schemaLocation="http://java.sun.com/xml/ns/javacard http://java.sun.com/xml/ns/javacard/applet-app_3_0.xsd"
+           version="3.0">
+    <applet>
+        <display-name>Iso Applet</display-name>
+        <applet-class>net.pwendland.javacard.pki.isoapplet.IsoApplet</applet-class>
+        <applet-AID>//aid/F276A288BC/FBA69D34F31001</applet-AID>
+    </applet>
+
+</applet-app>
+

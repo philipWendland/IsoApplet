@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://www.netbeans.org/ns/project/1">
+    <type>org.netbeans.modules.javacard.JCPROJECT</type>
+    <configuration>
+        <data xmlns="http://www.netbeans.org/ns/javacard-project/3">
+            <!-- Do not use Project Properties customizer when editing this file manually. -->
+            <name>IsoApplet</name>
+            <properties>
+                <property name="javacard.project.subtype">org.netbeans.modules.javacard.capproject</property>
+            </properties>
+            <source-roots>
+                <root id="src.dir"/>
+            </source-roots>
+            <dependencies/>
+        </data>
+    </configuration>
+</project>

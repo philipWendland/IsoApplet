@@ -222,7 +222,6 @@ public class IsoApplet extends Applet implements ExtendedLength {
     /**
      * \brief This method is called whenever the applet is being deselected.
      */
-    @Override
     public void deselect() {
         pin.reset();
         puk.reset();
@@ -232,7 +231,6 @@ public class IsoApplet extends Applet implements ExtendedLength {
     /**
      * \brief This method is called whenever the applet is being selected.
      */
-    @Override
     public boolean select() {
         if(state == STATE_CREATION
                 || state == STATE_INITIALISATION) {
@@ -252,7 +250,6 @@ public class IsoApplet extends Applet implements ExtendedLength {
      *
      * \param apdu The incoming APDU.
      */
-    @Override
     public void process(APDU apdu) {
         byte buffer[] = apdu.getBuffer();
         byte ins = buffer[ISO7816.OFFSET_INS];

@@ -3,3 +3,4 @@ doc
 *.orig
 *.un~
 *.cap
+/nbproject/private/
