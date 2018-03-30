@@ -4,3 +4,5 @@ doc
 *.un~
 *.cap
 /nbproject/private/
+/dist/
+/build/
