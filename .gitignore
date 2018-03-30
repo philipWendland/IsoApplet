@@ -3,3 +3,6 @@ doc
 *.orig
 *.un~
 *.cap
+/nbproject/private/
+/dist/
+/build/

@@ -1,0 +1,10 @@
+//Test script for Applet 'IsoApplet'
+
+powerup;
+// Select IsoApplet //aid/F276A288BC/FBA69D34F31001
+0x00 0xA4 0x04 0x00 0X0C 0XF2 0X76 0XA2 0X88 0XBC 0XFB 0XA6 0X9D 0X34 0XF3 0X10 0X02 0x7F;
+
+//Send the APDU here
+//0x80 0xCA 0x00 0x00 <length> <data> 0x7F;
+
+powerdown;
