@@ -647,6 +647,7 @@ public class IsoFileSystem extends DedicatedFile {
         byte[] buf = apdu.getBuffer();
         byte p1 = buf[ISO7816.OFFSET_P1];
         byte p2 = buf[ISO7816.OFFSET_P2];
+        byte lc = buf[ISO7816.OFFSET_LC];
 
         // Check INS: We only support INS=B0 at the moment.
         if(buf[ISO7816.OFFSET_INS] == (byte) 0xB1) {
@@ -686,7 +687,8 @@ public class IsoFileSystem extends DedicatedFile {
         }
 
         // Le: Length of expected data (i.e. max length of data to read).
-        short le = apdu.setOutgoing();
+        apdu.setOutgoing();
+        short le = (short) (lc == 0 ? 256 : (lc & 0xff));
         byte[] fileData = efTr.getData();
 
         // Offset in bounds?
