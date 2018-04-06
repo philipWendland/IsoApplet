@@ -65,7 +65,6 @@ public class ElementaryFileCyclicFixed extends ElementaryFileLinearFixed {
      * \return 	true 	If the record had been added.
      *			false	An error occurred, no record had been added.
      */
-    @Override
     public boolean addRecord(byte[] record) {
         if(record.length == super.getRecordLength()) {
             // Create a new record with the byte array as data and append it to the records array.

@@ -21,10 +21,11 @@ Build process
 This project uses [ant-javacard](https://github.com/martinpaljak/ant-javacard) to build cap-files.
 After cloning the IsoApplet repository, all you have to do is:
 * Perform `git submodule init && git submodule update` to retrieve the ant-javacard source code.
-* Download a suitable Java Card SDK (e.g. version 2.2.2).
-* For ant-javacard to recognize the Java Card SDK you can either set the JC_HOME environment variable, modify the javacard task in the build.xml (`<javacard jckit="/path/to/jckit">`), or set `jc.home`.
+* *Optional*: Download a suitable Java Card SDK (e.g. version 2.2.2) and adjust the path in build.xml:
+  For ant-javacard to recognize the Java Card SDK you can either set the `JC_HOME` environment variable, modify the javacard task in the build.xml (`<javacard jckit="/path/to/jckit">`), or set `jc.home`.
   See the [ant-javacard documentation](https://github.com/martinpaljak/ant-javacard#building-javacard-applet-cap-files-with-ant) for more details.
-* Assuming you have Apache ant installed on your system, you can now just invoke `ant` to produce the cap file.
+* Install Apache `ant`, `openjdk-8-jdk`
+* Invoke `ant` to produce the cap file.
   This will also compile ant-javacard when invoked for the first time.
 
 Installation

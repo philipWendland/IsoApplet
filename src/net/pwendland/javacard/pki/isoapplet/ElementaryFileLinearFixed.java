@@ -74,7 +74,6 @@ public class ElementaryFileLinearFixed extends ElementaryFileLinearVariable {
      * \return 	true 	If the record had been added.
      *			false	An error occurred, no record had been added.
      */
-    @Override
     public boolean addRecord(byte[] record) {
         if(records.length == currentRecordCount) {
             // No space left.
