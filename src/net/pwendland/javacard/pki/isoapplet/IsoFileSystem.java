@@ -701,8 +701,8 @@ public class IsoFileSystem extends DedicatedFile {
          * The host may request all the data (up to 256 Bytes) with Le=00, but the data might be smaller.
          * This is a valid request; we have to send all the data (even if less than 256 Bytes).
          */
-        if((short) (le+offset) >= (short) fileData.length) {
-            le = (short)((short)(fileData.length) - offset);
+        if(le+offset >= fileData.length) {
+            le = (short)(fileData.length - offset);
         }
 
         apdu.setOutgoingLength(le);
