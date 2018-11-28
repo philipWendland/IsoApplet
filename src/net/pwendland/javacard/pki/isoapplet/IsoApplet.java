@@ -48,7 +48,7 @@ import org.globalplatform.GPSystem;
  *
  * This applet has a filesystem and accepts relevant ISO 7816 instructions.
  * Access control is forced through a PIN and a SO PIN. PIN can be unblocked with PUK.
- * The PUK is optional (Set PUK_MUST_BE_SET). By default PUK is set with SO PIN value.
+ * The PUK is optional (Set DEF_PUK_MUST_BE_SET). By default PUK is set with SO PIN value.
  * Security Operations are being processed directly in
  * this class. Only private keys are stored as Key-objects. Only security
  * operations with private keys can be performed (decrypt with RSA, sign with RSA,
@@ -64,6 +64,11 @@ public class IsoApplet extends Applet implements ExtendedLength {
     /* Card-specific configuration */
     public static final boolean DEF_EXT_APDU = false;
     public static final boolean DEF_PRIVATE_KEY_IMPORT_ALLOWED = false;
+    public static final boolean DEF_PUK_MUST_BE_SET = false;
+    public static final byte    DEF_PIN_MAX_TRIES = 3;
+    public static final byte    DEF_PIN_MAX_LENGTH = 12;
+    public static final byte    DEF_PUK_LENGTH = 12;
+    public static final byte    DEF_SOPIN_LENGTH = 12;
 
     /* ISO constants not in the "ISO7816" interface */
     // File system related INS:
@@ -100,18 +105,13 @@ public class IsoApplet extends Applet implements ExtendedLength {
     /* PIN, PUK, SO PIN and key related constants */
     // PIN:
     private static final byte PIN_REF = (byte) 0x01;
-    private static final byte PIN_MAX_TRIES = 3;
     private static final byte PIN_MIN_LENGTH = 4;
-    private static final byte PIN_MAX_LENGTH = 12;
     // PUK:
     private static final byte PUK_REF = (byte) 0x02;
-    private static final boolean PUK_MUST_BE_SET = false;
     private static final byte PUK_MAX_TRIES = 5;
-    private static final byte PUK_LENGTH = 12;
     // SO PIN:
     private static final byte SOPIN_REF = (byte) 0x0F;
     private static final byte SOPIN_MAX_TRIES = 5;
-    private static final byte SOPIN_LENGTH = 12;
     // Keys:
     private static final short KEY_MAX_COUNT = 16;
 
@@ -143,9 +143,10 @@ public class IsoApplet extends Applet implements ExtendedLength {
 
     private static final byte API_FEATURE_EXT_APDU = (byte) 0x01;
     private static final byte API_FEATURE_SECURE_RANDOM = (byte) 0x02;
-    private static final byte API_FEATURE_ECC_SHA1 = (byte) 0x04;
+    private static final byte API_FEATURE_ECDSA_SHA1 = (byte) 0x04;
     private static final byte API_FEATURE_RSA_4096 = (byte) 0x08;
-    private static final byte API_FEATURE_ECC_PRECOMP = (byte) 0x10;
+    private static final byte API_FEATURE_ECDSA_PRECOMPUTED_HASH = (byte) 0x10;
+    private static final byte API_FEATURE_ECDH = (byte) 0x20;
 
     /* Other constants */
     // "ram_buf" is used for:
@@ -199,12 +200,12 @@ public class IsoApplet extends Applet implements ExtendedLength {
     private KeyAgreement ecdh = null;
     private byte api_features;
     private short ram_buf_size = RAM_BUF_SIZE_2048;
-    private byte pin_max_tries = PIN_MAX_TRIES;
-    private boolean puk_must_be_set = PUK_MUST_BE_SET;
+    private byte pin_max_tries = DEF_PIN_MAX_TRIES;
+    private boolean puk_must_be_set = DEF_PUK_MUST_BE_SET;
     private boolean private_key_import_allowed = DEF_PRIVATE_KEY_IMPORT_ALLOWED;
-    private byte pin_max_length = PIN_MAX_LENGTH;
-    private byte puk_length = PUK_LENGTH;
-    private byte sopin_length = SOPIN_LENGTH;
+    private byte pin_max_length = DEF_PIN_MAX_LENGTH;
+    private byte puk_length = DEF_PUK_LENGTH;
+    private byte sopin_length = DEF_SOPIN_LENGTH;
     private byte histBytes[] = null;
     private boolean puk_is_set = false;
     private byte transport_key[] = null;
@@ -239,12 +240,12 @@ public class IsoApplet extends Applet implements ExtendedLength {
 
         if(La == 0) {
             // Default parameters
-            pin_max_tries = PIN_MAX_TRIES;
-            puk_must_be_set = PUK_MUST_BE_SET;
+            pin_max_tries = DEF_PIN_MAX_TRIES;
+            puk_must_be_set = DEF_PUK_MUST_BE_SET;
             private_key_import_allowed = DEF_PRIVATE_KEY_IMPORT_ALLOWED;
-            pin_max_length = PIN_MAX_LENGTH;
-            puk_length = PUK_LENGTH;
-            sopin_length = SOPIN_LENGTH;
+            pin_max_length = DEF_PIN_MAX_LENGTH;
+            puk_length = DEF_PUK_LENGTH;
+            sopin_length = DEF_SOPIN_LENGTH;
             histBytes = null;
             transport_key = null;
             if (init) {
@@ -262,7 +263,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
                 }
                 pin_max_tries = bArray[++pos];
             } catch (NotFoundException e) {
-                pin_max_tries = PIN_MAX_TRIES;
+                pin_max_tries = DEF_PIN_MAX_TRIES;
             }
             try {
                 pos = UtilTLV.findTag(bArray, bOff, La, TAG_PUK_MUST_BE_SET);
@@ -272,7 +273,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
                 }
                 puk_must_be_set = bArray[++pos] != 0;
             } catch (NotFoundException e) {
-                puk_must_be_set = PUK_MUST_BE_SET;
+                puk_must_be_set = DEF_PUK_MUST_BE_SET;
             }
             try {
                 pos = UtilTLV.findTag(bArray, bOff, La, TAG_ENABLE_KEY_IMPORT);
@@ -292,7 +293,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
                 }
                 pin_max_length = bArray[++pos];
             } catch (NotFoundException e) {
-                pin_max_length = PIN_MAX_LENGTH;
+                pin_max_length = DEF_PIN_MAX_LENGTH;
             }
             try {
                 pos = UtilTLV.findTag(bArray, bOff, La, TAG_PUK_LENGTH);
@@ -302,7 +303,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
                 }
                 puk_length = bArray[++pos];
             } catch (NotFoundException e) {
-                puk_length = PUK_LENGTH;
+                puk_length = DEF_PUK_LENGTH;
             }
             try {
                 pos = UtilTLV.findTag(bArray, bOff, La, TAG_HISTBYTES);
@@ -323,12 +324,12 @@ public class IsoApplet extends Applet implements ExtendedLength {
                 }
                 sopin_length = bArray[++pos];
             } catch (NotFoundException e) {
-                sopin_length = SOPIN_LENGTH;
+                sopin_length = DEF_SOPIN_LENGTH;
             }
             try {
                 pos = UtilTLV.findTag(bArray, bOff, La, TAG_TRANSPORT_KEY);
                 len = UtilTLV.decodeLengthField(bArray, ++pos);
-                if(len != SOPIN_LENGTH) {
+                if(len != sopin_length) {
                     ISOException.throwIt(ISO7816.SW_DATA_INVALID);
                 }
                 transport_key = new byte[len];
@@ -392,9 +393,9 @@ public class IsoApplet extends Applet implements ExtendedLength {
         ram_chaining_cache = JCSystem.makeTransientShortArray(RAM_CHAINING_CACHE_SIZE, JCSystem.CLEAR_ON_DESELECT);
 
         if (transport_key != null) {
-            sopin.update(transport_key, (short) 0, SOPIN_LENGTH);
+            sopin.update(transport_key, (short) 0, sopin_length);
             sopin.resetAndUnblock();
-            Util.arrayFillNonAtomic(transport_key, (short) 0, SOPIN_LENGTH, (byte) 0x00);
+            Util.arrayFillNonAtomic(transport_key, (short) 0, sopin_length, (byte) 0x00);
         }
 
         currentAlgorithmRef = JCSystem.makeTransientByteArray((short)1, JCSystem.CLEAR_ON_DESELECT);
@@ -407,14 +408,14 @@ public class IsoApplet extends Applet implements ExtendedLength {
 
         try {
             ecdsaSignatureSha1 = Signature.getInstance(Signature.ALG_ECDSA_SHA, false);
-            api_features |= API_FEATURE_ECC_SHA1;
+            api_features |= API_FEATURE_ECDSA_SHA1;
         } catch (CryptoException e) {
             if(e.getReason() == CryptoException.NO_SUCH_ALGORITHM) {
                 /* Few Java Cards do not support ECDSA at all.
                  * We should not throw an exception in this cases
                  * as this would prevent installation. */
                 ecdsaSignatureSha1 = null;
-                api_features &= ~API_FEATURE_ECC_SHA1;
+                api_features &= ~API_FEATURE_ECDSA_SHA1;
             } else {
                 throw e;
             }
@@ -438,9 +439,9 @@ public class IsoApplet extends Applet implements ExtendedLength {
             }
         }
         if (ecdsaSignaturePrecomp != null) {
-            api_features |= API_FEATURE_ECC_PRECOMP;
+            api_features |= API_FEATURE_ECDSA_PRECOMPUTED_HASH;
         } else {
-            api_features &= ~API_FEATURE_ECC_PRECOMP;
+            api_features &= ~API_FEATURE_ECDSA_PRECOMPUTED_HASH;
         }
 
         try {
@@ -457,8 +458,10 @@ public class IsoApplet extends Applet implements ExtendedLength {
 
         try {
             ecdh = KeyAgreement.getInstance(KeyAgreement.ALG_EC_SVDP_DH_PLAIN, false);
+            api_features |= API_FEATURE_ECDH;
         } catch (Exception e) {
             ecdh = null;
+            api_features &= ~API_FEATURE_ECDH;
         }
 
         if(DEF_EXT_APDU) {
