@@ -39,6 +39,7 @@ import javacardx.apdu.ExtendedLength;
 import javacard.security.CryptoException;
 import javacard.security.Signature;
 import javacard.security.RandomData;
+import org.globalplatform.GPSystem;
 
 /**
  * \brief The IsoApplet class.
@@ -145,6 +146,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
     private static final byte TAG_ENABLE_KEY_IMPORT = (byte)0x03;
     private static final byte TAG_PIN_MAX_LENGTH = (byte)0x04;
     private static final byte TAG_PUK_LENGTH = (byte)0x05;
+    private static final byte TAG_HISTBYTES = (byte)0x06;
 
     /* Member variables: */
     private byte state;
@@ -165,6 +167,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
     private boolean private_key_import_allowed = DEF_PRIVATE_KEY_IMPORT_ALLOWED;
     private byte pin_max_length = PIN_MAX_LENGTH;
     private byte puk_length = PUK_LENGTH;
+    private byte histBytes[] = null;
 
     /**
      * \brief Sets default parameters (serial, etc).
@@ -200,6 +203,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
             private_key_import_allowed = DEF_PRIVATE_KEY_IMPORT_ALLOWED;
             pin_max_length = PIN_MAX_LENGTH;
             puk_length = PUK_LENGTH;
+            histBytes = null;
             return;
         }
         try {
@@ -252,6 +256,17 @@ public class IsoApplet extends Applet implements ExtendedLength {
                 puk_length = bArray[++pos];
             } catch (NotFoundException e) {
                 puk_length = PUK_LENGTH;
+            }
+            try {
+                pos = UtilTLV.findTag(bArray, bOff, La, TAG_HISTBYTES);
+                len = UtilTLV.decodeLengthField(bArray, ++pos);
+                if(len > 8) {
+                    ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+                }
+                histBytes = new byte[len];
+                Util.arrayCopyNonAtomic(bArray, ++pos, histBytes, (short) 0, len);
+            } catch (NotFoundException e) {
+                histBytes = null;
             }
         } catch (InvalidArgumentsException e) {
             ISOException.throwIt(ISO7816.SW_DATA_INVALID);
@@ -366,6 +381,16 @@ public class IsoApplet extends Applet implements ExtendedLength {
         //  - byte 1: Minor version
         //  - byte 2: Feature bitmap (used to distinguish between applet features)
         if(selectingApplet()) {
+            // setATRHistBytes can't be invoked from constructor, so do it here.
+            if (histBytes != null) {
+                Util.arrayCopyNonAtomic(histBytes, (short) 0, buffer, (short) 0, (byte) histBytes.length);
+                try {
+                    if (GPSystem.setATRHistBytes(buffer, (short) 0, (byte) histBytes.length)) {
+                        histBytes = null;
+                    }
+                } catch (Exception e) {
+                }
+            }
             buffer[0] = API_VERSION_MAJOR;
             buffer[1] = API_VERSION_MINOR;
             buffer[2] = api_features;
