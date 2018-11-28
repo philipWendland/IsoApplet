@@ -2507,11 +2507,11 @@ public class IsoApplet extends Applet implements ExtendedLength {
             if(le < 4) {
                 ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
             }
-            short s = JCSystem.getAvailableMemory(p2);
-            buf[0] = 0;
-            buf[1] = 0;
-            buf[2] = (byte)(s >> 8);
-            buf[3] = (byte)(s & 0xFF);
+            JCSystem.getAvailableMemory(ram_chaining_cache, (short) 0, p2);
+            buf[0] = (byte)(ram_chaining_cache[0] >> 8);
+            buf[1] = (byte)(ram_chaining_cache[0] & 0xFF);
+            buf[2] = (byte)(ram_chaining_cache[1] >> 8);
+            buf[3] = (byte)(ram_chaining_cache[1] & 0xFF);
             apdu.setOutgoingLength((short) 4);
             apdu.sendBytes((short) 0, (short) 4);
         } else
