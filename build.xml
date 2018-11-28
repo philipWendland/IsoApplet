@@ -7,7 +7,7 @@
     <!-- Create the distribution directory -->
     <taskdef name="javacard" classname="pro.javacard.ant.JavaCard" classpath="ext/ant/ant-javacard.jar"/>
     <javacard>
-      <cap jckit="ext/ant/sdks/jc222_kit" aid="f2:76:a2:88:bc:fb:a6:9d:34:f3:10" output="IsoApplet.cap" sources="src" version="1.0">
+      <cap jckit="ext/ant/sdks/jc303_kit" aid="f2:76:a2:88:bc:fb:a6:9d:34:f3:10" output="IsoApplet.cap" sources="src" version="1.0">
         <applet class="net.pwendland.javacard.pki.isoapplet.IsoApplet" aid="f2:76:a2:88:bc:fb:a6:9d:34:f3:10:01"/>
       </cap>
     </javacard>

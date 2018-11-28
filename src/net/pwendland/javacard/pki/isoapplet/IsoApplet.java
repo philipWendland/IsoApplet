@@ -847,7 +847,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
 
 
     /**
-     * \brief Process the GET RESPONSE APDU (INS=C0).
+     * \brief Process the GET RESPONSE APDU (INS = C0).
      *
      * If there is content available in ram_buf that could not be sent in the last operation,
      * the host should use this APDU to get the data. The data is cached in ram_buf.
@@ -1205,7 +1205,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
     }
 
     /**
-     * \brief Process the PERFORM SECURITY OPERATION apdu (INS=2A).
+     * \brief Process the PERFORM SECURITY OPERATION apdu (INS = 2A).
      *
      * This operation is used for cryptographic operations
      * (Computation of digital signatures, decrypting.).
@@ -1383,7 +1383,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
     }
 
     /**
-     * \brief Process the PUT DATA apdu (INS=DB).
+     * \brief Process the PUT DATA apdu (INS = DB).
      *
      * PUT DATA is currently used for private key import.
      *
@@ -1761,9 +1761,8 @@ public class IsoApplet extends Applet implements ExtendedLength {
         }
     }
 
-
     /**
-     * \brief Process the GET CHALLENGE instruction (INS=0x84).
+     * \brief Process the GET CHALLENGE instruction (INS = 84).
      *
      * The host may request a random number of length "Le". This random number
      * is currently _not_ used for any cryptographic function (e.g. secure
