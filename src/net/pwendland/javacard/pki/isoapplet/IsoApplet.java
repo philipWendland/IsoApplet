@@ -77,6 +77,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
     public static final byte INS_GET_RESPONSE = (byte) 0xC0;
     public static final byte INS_PUT_DATA = (byte) 0xDB;
     public static final byte INS_GET_CHALLENGE = (byte) 0x84;
+    public static final byte INS_GET_DATA = (byte) 0xCA;
     // Status words:
     public static final short SW_PIN_TRIES_REMAINING = 0x63C0; // See ISO 7816-4 section 7.5.1
     public static final short SW_COMMAND_NOT_ALLOWED_GENERAL = 0x6900;
@@ -357,6 +358,9 @@ public class IsoApplet extends Applet implements ExtendedLength {
                 break;
             case INS_GET_CHALLENGE:
                 processGetChallenge(apdu);
+                break;
+            case INS_GET_DATA:
+                processGetData(apdu);
                 break;
             default:
                 ISOException.throwIt(ISO7816.SW_INS_NOT_SUPPORTED);
@@ -1380,6 +1384,26 @@ public class IsoApplet extends Applet implements ExtendedLength {
             // Wrong/unknown algorithm.
             ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
         }
+    }
+
+    /**
+     * \brief Process the GET DATA apdu (INS = CA).
+     *
+     * GET DATA is currently used for obtaining directory listing.
+     *
+     * \throw ISOException SW_INCORRECT_P1P2, SW_FILE_INVALID
+     */
+    private void processGetData(APDU apdu) throws ISOException {
+        byte[] buf = apdu.getBuffer();
+        byte p1 = buf[ISO7816.OFFSET_P1];
+        byte p2 = buf[ISO7816.OFFSET_P2];
+
+        // Return directory entries
+        if(p1 == 0x01 && p2 == 0) {
+            fs.processGetData(apdu);
+            return;
+        }
+        ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
     }
 
     /**

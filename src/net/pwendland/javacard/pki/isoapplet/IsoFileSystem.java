@@ -709,6 +709,48 @@ public class IsoFileSystem extends DedicatedFile {
         apdu.sendBytesLong(fileData, offset, le);
     }
 
+    /**
+     * \brief Process the GET DATA APDU.
+     *
+     * \param apdu The APDU (INS=CA).
+     *
+     * \throw ISOException SW_INCORRECT_P1P2, SW_FILE_INVALID, SW_UNKNOWN
+     */
+    public void processGetData(APDU apdu) {
+        byte[] buf = apdu.getBuffer();
+        byte p1 = buf[ISO7816.OFFSET_P1];
+        byte p2 = buf[ISO7816.OFFSET_P2];
+        short cnt, le;
+
+        // Check P1, P2
+        if(p1 != 0x01 || p2 != 0) {
+            ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
+        }
+        // Gete Directory file
+        DedicatedFile df = (DedicatedFile)currentlySelectedFiles[OFFSET_CURRENT_DF];
+        if (df == null) {
+            ISOException.throwIt(ISO7816.SW_FILE_INVALID);
+        }
+        try {
+            cnt = df.getChildrenCount();
+            le = apdu.setOutgoing();
+            // Check for overflow
+            if (le < (short)(cnt*2)) {
+                ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
+            }
+            // Iterate FileIDs
+            le = 0;
+            for (byte n = 0; n < cnt; n++) {
+                short fid = df.getChildren(n).getFileID();
+                buf[le++] = (byte)(fid >> 8);
+                buf[le++] = (byte)(fid & 0xFF);
+            }
+            apdu.setOutgoingLength(le);
+            apdu.sendBytes((short) 0, le);
+        } catch (Exception e) {
+            ISOException.throwIt(ISO7816.SW_UNKNOWN);
+        }
+    }
 
 // TODO WRITE BINARY If file lifecycles are to be implemented.
 
