@@ -81,6 +81,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
     // Status words:
     public static final short SW_PIN_TRIES_REMAINING = 0x63C0; // See ISO 7816-4 section 7.5.1
     public static final short SW_COMMAND_NOT_ALLOWED_GENERAL = 0x6900;
+    public static final short SW_NO_PIN_DEFINED = (short)0x9802;
 
     /* PIN, PUK and key realted constants */
     // PIN:
@@ -366,7 +367,14 @@ public class IsoApplet extends Applet implements ExtendedLength {
                 ISOException.throwIt(ISO7816.SW_INS_NOT_SUPPORTED);
             } // switch
         } else {
-            ISOException.throwIt(ISO7816.SW_CLA_NOT_SUPPORTED);
+            switch (ins) {
+            // We use VERIFY apdu with proprietary class byte to bypass pinpad firewalled readers
+            case INS_VERIFY:
+                processVerify(apdu);
+                break;
+            default:
+                ISOException.throwIt(ISO7816.SW_INS_NOT_SUPPORTED);
+            }
         }
     }
 
@@ -402,6 +410,14 @@ public class IsoApplet extends Applet implements ExtendedLength {
         short offset_cdata;
         short lc;
 
+        /* P1 FF means logout. */
+        if (buf[ISO7816.OFFSET_P1] == (byte)0xFF) {
+            pin.reset();
+            puk.reset();
+            fs.setUserAuthenticated(false);
+            ISOException.throwIt(ISO7816.SW_NO_ERROR);
+        }
+
         // P1P2 0001 only at the moment. (key-reference 01 = PIN)
         if(buf[ISO7816.OFFSET_P1] != 0x00 || buf[ISO7816.OFFSET_P2] != 0x01) {
             ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
@@ -420,19 +436,19 @@ public class IsoApplet extends Applet implements ExtendedLength {
         }
 
         // Caller asks if verification is needed.
-        if(lc == 0
-                && state != STATE_CREATION
-                && state != STATE_INITIALISATION) {
-            if( pin.isValidated() ) {
+        if(lc == 0) {
+            if (state == STATE_CREATION || state == STATE_INITIALISATION) {
                 ISOException.throwIt(ISO7816.SW_NO_ERROR);
+                // ISOException.throwIt(SW_NO_PIN_DEFINED);
+            } else if (state == STATE_OPERATIONAL_ACTIVATED) {
+                if( pin.isValidated() ) {
+                    ISOException.throwIt(ISO7816.SW_NO_ERROR);
+                }
+                ISOException.throwIt((short)(SW_PIN_TRIES_REMAINING | pin.getTriesRemaining()));
+            } else if (state == STATE_OPERATIONAL_DEACTIVATED) {
+                ISOException.throwIt(ISO7816.SW_SECURITY_STATUS_NOT_SATISFIED);
             }
-            // Verification required, return remaining tries.
-            ISOException.throwIt((short)(SW_PIN_TRIES_REMAINING | pin.getTriesRemaining()));
-        } else if(lc == 0
-                  && (state == STATE_CREATION
-                      || state == STATE_INITIALISATION)) {
-            // No verification required.
-            ISOException.throwIt(ISO7816.SW_NO_ERROR);
+            ISOException.throwIt(ISO7816.SW_UNKNOWN);
         }
 
         // Pad the PIN if not done by caller, so no garbage from the APDU will be part of the PIN.
