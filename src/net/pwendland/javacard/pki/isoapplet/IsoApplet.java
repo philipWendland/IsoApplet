@@ -78,6 +78,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
     public static final byte INS_PUT_DATA = (byte) 0xDB;
     public static final byte INS_GET_CHALLENGE = (byte) 0x84;
     public static final byte INS_GET_DATA = (byte) 0xCA;
+    public static final byte INS_DELETE_KEY = (byte) 0xE5;
     // Status words:
     public static final short SW_PIN_TRIES_REMAINING = 0x63C0; // See ISO 7816-4 section 7.5.1
     public static final short SW_COMMAND_NOT_ALLOWED_GENERAL = 0x6900;
@@ -371,6 +372,9 @@ public class IsoApplet extends Applet implements ExtendedLength {
             // We use VERIFY apdu with proprietary class byte to bypass pinpad firewalled readers
             case INS_VERIFY:
                 processVerify(apdu);
+                break;
+            case INS_DELETE_KEY:
+                processDeleteKey(apdu);
                 break;
             default:
                 ISOException.throwIt(ISO7816.SW_INS_NOT_SUPPORTED);
@@ -1834,6 +1838,44 @@ public class IsoApplet extends Applet implements ExtendedLength {
         randomData.generateData(buf, (short)0, le);
         apdu.setOutgoingLength(le);
         apdu.sendBytes((short)0, le);
+    }
+
+    /**
+     * \brief Process the DELETE KEY instruction (INS = E5).
+     *
+     * Returns selected data
+     *
+     * \param apdu The DELETE_KEY apdu
+     *
+     * \throw ISOException ISO7816.SW_SECURITY_STATUS_NOT_SATISFIED, ISO7816.SW_DATA_INVALID.
+     */
+    private void processDeleteKey(APDU apdu) {
+        byte[] buf = apdu.getBuffer();
+        short offset_cdata;
+        short lc;
+        byte p1 = buf[ISO7816.OFFSET_P1];
+        byte p2 = buf[ISO7816.OFFSET_P2];
+        short privKeyRef = (short)p2;
+
+        if( ! pin.isValidated() ) {
+            ISOException.throwIt(ISO7816.SW_SECURITY_STATUS_NOT_SATISFIED);
+        }
+
+        if (p1 != 0) {
+            ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
+        }
+
+        if(privKeyRef < 0 || privKeyRef >= KEY_MAX_COUNT) {
+            ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+        }
+
+        if(keys[privKeyRef] == null) {
+            ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+        }
+        if(keys[privKeyRef].isInitialized()) {
+            keys[privKeyRef].clearKey();
+        }
+        keys[privKeyRef] = null;
     }
 
 } // class IsoApplet
