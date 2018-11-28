@@ -158,6 +158,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
     private static final byte TAG_PUK_LENGTH = (byte)0x05;
     private static final byte TAG_SOPIN_LENGTH = (byte)0x06;
     private static final byte TAG_HISTBYTES = (byte)0x07;
+    private static final byte TAG_TRANSPORT_KEY = (byte)0x08;
 
     /* Member variables: */
     private byte state;
@@ -182,6 +183,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
     private byte sopin_length = SOPIN_LENGTH;
     private byte histBytes[] = null;
     private boolean puk_is_set = false;
+    private byte transport_key[] = null;
 
     /**
      * \brief Sets default parameters (serial, etc).
@@ -219,6 +221,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
             puk_length = PUK_LENGTH;
             sopin_length = SOPIN_LENGTH;
             histBytes = null;
+            transport_key = null;
             return;
         }
         try {
@@ -293,6 +296,17 @@ public class IsoApplet extends Applet implements ExtendedLength {
             } catch (NotFoundException e) {
                 sopin_length = SOPIN_LENGTH;
             }
+            try {
+                pos = UtilTLV.findTag(bArray, bOff, La, TAG_TRANSPORT_KEY);
+                len = UtilTLV.decodeLengthField(bArray, ++pos);
+                if(len != SOPIN_LENGTH) {
+                    ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+                }
+                transport_key = new byte[len];
+                Util.arrayCopyNonAtomic(bArray, ++pos, transport_key, (short) 0, len);
+            } catch (NotFoundException e) {
+                transport_key = null;
+            }
         } catch (InvalidArgumentsException e) {
             ISOException.throwIt(ISO7816.SW_DATA_INVALID);
         }
@@ -324,6 +338,12 @@ public class IsoApplet extends Applet implements ExtendedLength {
         fs = new IsoFileSystem();
         ram_buf = JCSystem.makeTransientByteArray(RAM_BUF_SIZE, JCSystem.CLEAR_ON_DESELECT);
         ram_chaining_cache = JCSystem.makeTransientShortArray(RAM_CHAINING_CACHE_SIZE, JCSystem.CLEAR_ON_DESELECT);
+
+        if (transport_key != null) {
+            sopin.update(transport_key, (short) 0, SOPIN_LENGTH);
+            sopin.resetAndUnblock();
+            Util.arrayFillNonAtomic(transport_key, (short) 0, SOPIN_LENGTH, (byte) 0x00);
+        }
 
         currentAlgorithmRef = JCSystem.makeTransientByteArray((short)1, JCSystem.CLEAR_ON_DESELECT);
         currentPrivateKeyRef = JCSystem.makeTransientShortArray((short)1, JCSystem.CLEAR_ON_DESELECT);
@@ -403,6 +423,10 @@ public class IsoApplet extends Applet implements ExtendedLength {
     public void process(APDU apdu) {
         byte buffer[] = apdu.getBuffer();
         byte ins = buffer[ISO7816.OFFSET_INS];
+
+        if (state == STATE_TERMINATED) {
+            ISOException.throwIt(ISO7816.SW_FUNC_NOT_SUPPORTED);
+        }
 
         // Return the API version if we are being selected.
         // Format:
@@ -530,6 +554,11 @@ public class IsoApplet extends Applet implements ExtendedLength {
             case INS_VERIFY:
                 processVerify(apdu);
                 break;
+            // We use CHANGE_REFERENCE_DATA apdu with proprietary class byte for
+            // implicit transition from STATE_CREATION to STATE_INITIALISATION
+            case INS_CHANGE_REFERENCE_DATA:
+                processChangeReferenceData(apdu);
+                break;
             case INS_DELETE_KEY:
                 processDeleteKey(apdu);
                 break;
@@ -626,8 +655,11 @@ public class IsoApplet extends Applet implements ExtendedLength {
                 ISOException.throwIt(ISO7816.SW_UNKNOWN);
             } else if (ref == SOPIN_REF) {
                 if (state == STATE_CREATION) {
-                    ISOException.throwIt(ISO7816.SW_NO_ERROR);
-                    // ISOException.throwIt(SW_NO_PIN_DEFINED);
+                    if (transport_key == null || sopin.isValidated()) {
+                        // No verification required.
+                        ISOException.throwIt(ISO7816.SW_NO_ERROR);
+                    }
+                    ISOException.throwIt((short)(SW_PIN_TRIES_REMAINING | sopin.getTriesRemaining()));
                 } else if (state == STATE_INITIALISATION || state == STATE_OPERATIONAL_ACTIVATED) {
                     if( sopin.isValidated() ) {
                         ISOException.throwIt(ISO7816.SW_NO_ERROR);
@@ -661,9 +693,18 @@ public class IsoApplet extends Applet implements ExtendedLength {
                 fs.setUserAuthenticated(false);
                 if (sopin.getTriesRemaining() > 0)
                     ISOException.throwIt((short)(SW_PIN_TRIES_REMAINING | sopin.getTriesRemaining()));
+                if (transport_key != null)
+                    state = STATE_TERMINATED;
                 ISOException.throwIt(SW_AUTHENTICATION_METHOD_BLOCKED);
             } else {
                 fs.setUserAuthenticated(SOPIN_REF);
+                if(state == STATE_CREATION && transport_key != null) {
+                    // Set PUK (may be re-set during PIN creation)
+                    puk.update(buf, offset_cdata, (byte)lc);
+                    puk.resetAndUnblock();
+                    puk_is_set = true;
+                    state = STATE_INITIALISATION;
+                }
             }
         } else {
             ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
@@ -704,14 +745,41 @@ public class IsoApplet extends Applet implements ExtendedLength {
 
             // We set the SO PIN and advance to STATE_INITIALISATION.
 
+            if (lc == 0) {
+                if (transport_key == null) {
+                    ISOException.throwIt(SW_NO_PIN_DEFINED);
+                }
+                // Implicit change to STATE_INITIALISATION as SO PIN has been verified for ERASE_CARD apdu processing
+                if (sopin.isValidated()) {
+                    // PUK should also be set, as it was cleared in ERASE_CARD, but we don't know the SO PIN
+                    // puk.update(buf, offset_cdata, (byte)lc);
+                    // puk.resetAndUnblock();
+                    // puk_is_set = true;
+
+                    fs.setUserAuthenticated(SOPIN_REF);
+
+                    state = STATE_INITIALISATION;
+
+                    ISOException.throwIt(ISO7816.SW_NO_ERROR);
+                } else {
+                    ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
+                }
+            }
+
             // Check length.
             if(lc != sopin_length) {
                 ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
             }
 
+            if(transport_key != null && !sopin.check(buf, offset_cdata, (byte) lc)) {
+                ISOException.throwIt((short)(SW_PIN_TRIES_REMAINING | sopin.getTriesRemaining()));
+            }
+
             // Set SO PIN
             sopin.update(buf, offset_cdata, (byte)lc);
             sopin.resetAndUnblock();
+            sopin.check(buf, offset_cdata, (byte) lc);
+            fs.setUserAuthenticated(SOPIN_REF);
 
             // Set PUK (may be re-set during PIN creation)
             puk.update(buf, offset_cdata, (byte)lc);
@@ -2166,10 +2234,14 @@ public class IsoApplet extends Applet implements ExtendedLength {
         if(p1 != 0x00 || p2 != 0x00) {
             ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
         }
-        // Erase PIN, PUK & SO PIN
+        if( transport_key != null && state != STATE_CREATION && !sopin.isValidated() ) {
+            ISOException.throwIt(ISO7816.SW_SECURITY_STATUS_NOT_SATISFIED);
+        }
+        // Erase PIN, PUK & SO PIN (only if transport key was not set)
         pin = null;
         puk = null;
-        sopin = null;
+        if (transport_key == null)
+            sopin = null;
         // Erase file system
         if (fs != null) {
             try {
@@ -2197,7 +2269,9 @@ public class IsoApplet extends Applet implements ExtendedLength {
         pin = new OwnerPIN(pin_max_tries, pin_max_length);
         puk = new OwnerPIN(PUK_MAX_TRIES, puk_length);
         puk_is_set = false;
-        sopin = new OwnerPIN(SOPIN_MAX_TRIES, sopin_length);
+        // If transport key was configured, then a valid SO PIN has to be presented during initialisation
+        if (transport_key == null)
+            sopin = new OwnerPIN(SOPIN_MAX_TRIES, sopin_length);
         fs = new IsoFileSystem();
         apdu.setOutgoingAndSend((short) 0, (short) 0);
     }
