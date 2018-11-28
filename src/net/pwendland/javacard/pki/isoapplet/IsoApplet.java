@@ -40,6 +40,7 @@ import javacard.security.CryptoException;
 import javacard.security.Signature;
 import javacard.security.MessageDigest;
 import javacard.security.RandomData;
+import javacard.security.KeyAgreement;
 import org.globalplatform.GPSystem;
 
 /**
@@ -122,6 +123,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
     private static final byte ALG_GEN_EC = (byte) 0xEC;
     private static final byte ALG_ECDSA_SHA1 = (byte) 0x21;
     private static final byte ALG_ECDSA_PRECOMPUTED_HASH = (byte) 0x22;
+    private static final byte ALG_ECDH = (byte) 0x23;
 
     private static final short KeyBuilder_LENGTH_RSA_3072 = 3072;
 
@@ -194,6 +196,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
     private Signature ecdsaSignaturePrecomp = null;
     private boolean ecdsaSHA512;
     private RandomData randomData = null;
+    private KeyAgreement ecdh = null;
     private byte api_features;
     private short ram_buf_size = RAM_BUF_SIZE_2048;
     private byte pin_max_tries = PIN_MAX_TRIES;
@@ -450,6 +453,12 @@ public class IsoApplet extends Applet implements ExtendedLength {
             } else {
                 throw e;
             }
+        }
+
+        try {
+            ecdh = KeyAgreement.getInstance(KeyAgreement.ALG_EC_SVDP_DH_PLAIN, false);
+        } catch (Exception e) {
+            ecdh = null;
         }
 
         if(DEF_EXT_APDU) {
@@ -1597,6 +1606,29 @@ public class IsoApplet extends Applet implements ExtendedLength {
             }
             break;
 
+        case (byte) 0xB7:
+            /* ************
+             * Derive *
+             **************/
+
+            // For derivation, only ECDH is supported.
+            if(algRef == ALG_ECDH) {
+                // Check: We need a private key reference.
+                if(privKeyRef == -1) {
+                    ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+                }
+                // Key reference must point to a EC private key.
+                if(keys[privKeyRef].getType() != KeyBuilder.TYPE_EC_FP_PRIVATE) {
+                    ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+                }
+                if(ecdh == null) {
+                    ISOException.throwIt(ISO7816.SW_FUNC_NOT_SUPPORTED);
+                }
+            } else {
+                ISOException.throwIt(ISO7816.SW_FUNC_NOT_SUPPORTED);
+            }
+            break;
+
         case (byte) 0xB8:
             /* ************
              * Decryption *
@@ -1661,7 +1693,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
     }
 
     /**
-     * \brief Decipher the data from the apdu using the private key referenced by
+     * \brief Decipher (or ECDH derive) the data from the apdu using the private key referenced by
      * 			an earlier MANAGE SECURITY ENVIRONMENT apdu.
      *
      * \param apdu The PERFORM SECURITY OPERATION apdu with P1=80 and P2=86.
@@ -1673,6 +1705,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
         short offset_cdata;
         short lc;
         short decLen = -1;
+        short derLen = -1;
 
         lc = doChainingOrExtAPDU(apdu);
         offset_cdata = 0;
@@ -1707,6 +1740,32 @@ public class IsoApplet extends Applet implements ExtendedLength {
             // A single short APDU can handle only 256 bytes - we use sendLargeData instead
             apdu.setOutgoing();
             sendLargeData(apdu, (short)0, decLen);
+            break;
+
+        case ALG_ECDH:
+            // Check if we support ECDH
+            if (ecdh == null) {
+                ISOException.throwIt(ISO7816.SW_FUNC_NOT_SUPPORTED);
+            }
+
+            // Get the key - it must be an ECC private key,
+            // checks have been done in MANAGE SECURITY ENVIRONMENT.
+            ECPrivateKey ecKey = (ECPrivateKey) keys[currentPrivateKeyRef[0]];
+
+            // Perform ECDH
+            // Note: The first byte of the data field is the padding indicator
+            //		 and therefore not part of the data.
+            ecdh.init(ecKey);
+            derLen = ecdh.generateSecret(ram_buf, (short)(offset_cdata+1), (short)(lc-1),
+                                         ram_buf, (short) 0);
+
+            // A single short APDU can handle 256 bytes - only one send operation neccessary.
+            short le = apdu.setOutgoing();
+            if(le < derLen) {
+                ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
+            }
+            apdu.setOutgoingLength(derLen);
+            apdu.sendBytesLong(ram_buf, (short) 0, derLen);
             break;
 
         default:
