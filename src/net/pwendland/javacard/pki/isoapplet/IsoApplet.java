@@ -113,11 +113,15 @@ public class IsoApplet extends Applet implements ExtendedLength {
     // Keys:
     private static final short KEY_MAX_COUNT = 16;
 
-    private static final byte ALG_GEN_RSA_2048 = (byte) 0xF3;
+    private static final short DEF_RSA_KEYLEN = KeyBuilder.LENGTH_RSA_2048;
+
+    private static final byte ALG_GEN_RSA = (byte) 0xF3;
     private static final byte ALG_RSA_PAD_PKCS1 = (byte) 0x11;
 
     private static final byte ALG_GEN_EC = (byte) 0xEC;
     private static final byte ALG_ECDSA_SHA1 = (byte) 0x21;
+
+    private static final short KeyBuilder_LENGTH_RSA_3072 = 3072;
 
     private static final short LENGTH_EC_FP_224 = 224;
     private static final short LENGTH_EC_FP_256 = 256;
@@ -136,16 +140,20 @@ public class IsoApplet extends Applet implements ExtendedLength {
     private static final byte API_FEATURE_EXT_APDU = (byte) 0x01;
     private static final byte API_FEATURE_SECURE_RANDOM = (byte) 0x02;
     private static final byte API_FEATURE_ECC = (byte) 0x04;
+    private static final byte API_FEATURE_RSA_4096 = (byte) 0x08;
 
     /* Other constants */
     // "ram_buf" is used for:
     //	* GET RESPONSE (caching for response APDUs):
-    //		- GENERATE ASYMMETRIC KEYPAIR: RSA 2048 bit and ECC >= 256 bit public key information.
+    //		- GENERATE ASYMMETRIC KEYPAIR: RSA >= 1024 bit and ECC >= 256 bit public key information.
     //	* Command Chaining or extended APDUs (caching of command APDU data):
-    //		- DECIPHER (RSA 2048 bit).
+    //		- DECIPHER (RSA >= 1024 bit).
     //		- GENERATE ASYMMETRIC KEYPAIR: ECC curve parameters if large (> 256 bit) prime fields are used.
     //		- PUT DATA: RSA and ECC private key import.
-    private static final short RAM_BUF_SIZE = (short) 660;
+    private static final short RAM_BUF_SIZE_2048 = (short) 664;
+    // 4096bit RSA needs larger buffer which is not available on some cards
+    private static final short RAM_BUF_SIZE_4096 = (short) 1310;
+
     // "ram_chaining_cache" is used for:
     //		- Caching of the amount of bytes remainung.
     //		- Caching of the current send position.
@@ -182,6 +190,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
     private Signature ecdsaSignature = null;
     private RandomData randomData = null;
     private byte api_features;
+    private short ram_buf_size = RAM_BUF_SIZE_2048;
     private byte pin_max_tries = PIN_MAX_TRIES;
     private boolean puk_must_be_set = PUK_MUST_BE_SET;
     private boolean private_key_import_allowed = DEF_PRIVATE_KEY_IMPORT_ALLOWED;
@@ -362,7 +371,16 @@ public class IsoApplet extends Applet implements ExtendedLength {
         puk = new OwnerPIN(PUK_MAX_TRIES, puk_length);
         sopin = new OwnerPIN(SOPIN_MAX_TRIES, sopin_length);
         fs = new IsoFileSystem();
-        ram_buf = JCSystem.makeTransientByteArray(RAM_BUF_SIZE, JCSystem.CLEAR_ON_DESELECT);
+        try {
+            Key prKey = KeyBuilder.buildKey(KeyBuilder.TYPE_RSA_CRT_PRIVATE, KeyBuilder.LENGTH_RSA_4096, false);
+            prKey = null;
+            api_features |= API_FEATURE_RSA_4096;
+            ram_buf_size = RAM_BUF_SIZE_4096;
+        } catch (CryptoException e) {
+            ram_buf_size = RAM_BUF_SIZE_2048;
+        }
+        ram_buf = JCSystem.makeTransientByteArray(ram_buf_size, JCSystem.CLEAR_ON_DESELECT);
+
         ram_chaining_cache = JCSystem.makeTransientShortArray(RAM_CHAINING_CACHE_SIZE, JCSystem.CLEAR_ON_DESELECT);
 
         if (transport_key != null) {
@@ -1050,9 +1068,41 @@ public class IsoApplet extends Applet implements ExtendedLength {
         }
 
         switch(currentAlgorithmRef[0]) {
-        case ALG_GEN_RSA_2048:
+        case ALG_GEN_RSA:
             if(p1 != (byte) 0x42 || p2 != (byte) 0x00) {
                 ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
+            }
+
+            // Bytes received must be Lc.
+            lc = apdu.setIncomingAndReceive();
+            if(lc != apdu.getIncomingLength()) {
+                ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
+            }
+            short offset_cdata = apdu.getOffsetCdata();
+
+            /* Search for keyLength */
+            short keyLength = DEF_RSA_KEYLEN;
+            try {
+                short pos = UtilTLV.findTag(buf, offset_cdata, lc, (byte) 0x91);
+                if(buf[++pos] != (byte) 0x02) { // Length: must be 2.
+                    ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+                }
+                keyLength = (short) ((buf[++pos] << 8) + buf[++pos]);
+            } catch (NotFoundException e) {
+                keyLength = DEF_RSA_KEYLEN;
+            } catch (InvalidArgumentsException e) {
+                ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+            }
+
+            switch (keyLength) {
+            case KeyBuilder.LENGTH_RSA_1024:
+            case KeyBuilder.LENGTH_RSA_1536:
+            case KeyBuilder.LENGTH_RSA_2048:
+            case KeyBuilder_LENGTH_RSA_3072:
+            case KeyBuilder.LENGTH_RSA_4096:
+                break;
+            default:
+                ISOException.throwIt(ISO7816.SW_DATA_INVALID);
             }
 
             // Command chaining might be used for ECC, but not for RSA.
@@ -1060,7 +1110,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
                 ISOException.throwIt(ISO7816.SW_COMMAND_CHAINING_NOT_SUPPORTED);
             }
             try {
-                kp = new KeyPair(KeyPair.ALG_RSA_CRT, KeyBuilder.LENGTH_RSA_2048);
+                kp = new KeyPair(KeyPair.ALG_RSA_CRT, keyLength);
             } catch(CryptoException e) {
                 if(e.getReason() == CryptoException.NO_SUCH_ALGORITHM) {
                     ISOException.throwIt(ISO7816.SW_FUNC_NOT_SUPPORTED);
@@ -1142,7 +1192,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
                 JCSystem.requestObjectDeletion();
             }
 
-            Util.arrayFillNonAtomic(ram_buf, (short)0, RAM_BUF_SIZE, (byte)0x00);
+            Util.arrayFillNonAtomic(ram_buf, (short)0, ram_buf_size, (byte)0x00);
             ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_POS] = 0;
             // Return pubkey. See ISO7816-8 table 3.
             try {
@@ -1160,7 +1210,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
     }
 
     /**
-     * \brief Encode a 2048 bit RSAPublicKey according to ISO7816-8 table 3 and send it as a response,
+     * \brief Encode a >= 1024 bit RSAPublicKey according to ISO7816-8 table 3 and send it as a response,
      * using an extended APDU.
      *
      * \see ISO7816-8 table 3.
@@ -1173,17 +1223,18 @@ public class IsoApplet extends Applet implements ExtendedLength {
     private void sendRSAPublicKey(APDU apdu, RSAPublicKey key) {
         short le = apdu.setOutgoing();
         short pos = 0;
+        short keyLength = (short) (key.getSize() / 8);
 
         ram_buf[pos++] = (byte) 0x7F; // Interindustry template for nesting one set of public key data objects.
         ram_buf[pos++] = (byte) 0x49; // "
         ram_buf[pos++] = (byte) 0x82; // Length field: 3 Bytes.
-        ram_buf[pos++] = (byte) 0x01; // Length : 265 Bytes.
-        ram_buf[pos++] = (byte) 0x09; // "
+        ram_buf[pos++] = (byte) ((short) (keyLength + 9) / 256); // Length + 9
+        ram_buf[pos++] = (byte) ((short) (keyLength + 9) % 256); // "
 
         ram_buf[pos++] = (byte) 0x81; // RSA public key modulus tag.
         ram_buf[pos++] = (byte) 0x82; // Length field: 3 Bytes.
-        ram_buf[pos++] = (byte) 0x01; // Length: 256 bytes.
-        ram_buf[pos++] = (byte) 0x00; // "
+        ram_buf[pos++] = (byte) (keyLength / 256); // Length
+        ram_buf[pos++] = (byte) (keyLength % 256); // "
         pos += key.getModulus(ram_buf, pos);
         ram_buf[pos++] = (byte) 0x82; // RSA public key exponent tag.
         ram_buf[pos++] = (byte) 0x03; // Length: 3 Bytes.
@@ -1242,7 +1293,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
             ISOException.throwIt(ISO7816.SW_NO_ERROR);
         }
 
-        if((short)(pos + len) > RAM_BUF_SIZE) {
+        if((short)(pos + len) > ram_buf_size) {
             ISOException.throwIt(ISO7816.SW_UNKNOWN);
         }
 
@@ -1473,7 +1524,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
              *******************/
 
             if(algRef != ALG_GEN_EC
-                    && algRef != ALG_GEN_RSA_2048) {
+                    && algRef != ALG_GEN_RSA) {
                 ISOException.throwIt(ISO7816.SW_FUNC_NOT_SUPPORTED);
             }
             // Check: We need a private key reference.
@@ -1620,13 +1671,14 @@ public class IsoApplet extends Applet implements ExtendedLength {
             rsaPkcs1Cipher.init(theKey, Cipher.MODE_DECRYPT);
             try {
                 decLen = rsaPkcs1Cipher.doFinal(ram_buf, (short)(offset_cdata+1), (short)(lc-1),
-                                                apdu.getBuffer(), (short) 0);
+                                                ram_buf, (short) 0);
             } catch(CryptoException e) {
                 ISOException.throwIt(ISO7816.SW_WRONG_DATA);
             }
 
-            // We have to send at most 256 bytes. A short APDU can handle that - only one send operation neccessary.
-            apdu.setOutgoingAndSend((short)0, decLen);
+            // A single short APDU can handle only 256 bytes - we use sendLargeData instead
+            apdu.setOutgoing();
+            sendLargeData(apdu, (short)0, decLen);
             break;
 
         default:
@@ -1666,25 +1718,22 @@ public class IsoApplet extends Applet implements ExtendedLength {
 
             // RSA signature operation.
             RSAPrivateCrtKey rsaKey = (RSAPrivateCrtKey) keys[currentPrivateKeyRef[0]];
+            short keyLength = (short) (keys[currentPrivateKeyRef[0]].getSize() / 8);
 
-            if(lc > (short) 247) {
+            if(lc > (short) (keyLength - 9)) {
                 ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
             }
 
             rsaPkcs1Cipher.init(rsaKey, Cipher.MODE_ENCRYPT);
             sigLen = rsaPkcs1Cipher.doFinal(buf, offset_cdata, lc, ram_buf, (short)0);
 
-            if(sigLen != 256) {
+            if(sigLen != keyLength) {
                 ISOException.throwIt(ISO7816.SW_UNKNOWN);
             }
 
-            // A single short APDU can handle 256 bytes - only one send operation neccessary.
-            short le = apdu.setOutgoing();
-            if(le < sigLen) {
-                ISOException.throwIt(ISO7816.SW_CORRECT_LENGTH_00);
-            }
-            apdu.setOutgoingLength(sigLen);
-            apdu.sendBytesLong(ram_buf, (short) 0, sigLen);
+            // A single short APDU can handle only 256 bytes - we use sendLargeData instead
+            apdu.setOutgoing();
+            sendLargeData(apdu, (short)0, sigLen);
             break;
 
         case ALG_ECDSA_SHA1:
@@ -1799,7 +1848,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
         }
 
         switch(currentAlgorithmRef[0]) {
-        case ALG_GEN_RSA_2048:
+        case ALG_GEN_RSA:
             // RSA key import.
 
             // This ensures that all the data is located in ram_buf, beginning at zero.
@@ -1886,7 +1935,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
 
         // Receive data (short or extended).
         while (recvLen > 0) {
-            if((short)(ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_POS] + recvLen) > RAM_BUF_SIZE) {
+            if((short)(ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_POS] + recvLen) > ram_buf_size) {
                 ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
             }
             Util.arrayCopyNonAtomic(buf, offset_cdata, ram_buf, ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_POS], recvLen);
@@ -1914,12 +1963,13 @@ public class IsoApplet extends Applet implements ExtendedLength {
      * \brief Update fields of the current private RSA key.
      *
      * A MANAGE SECURITY ENVIRONMENT must have preceeded, setting the current
-     * algorithm reference to ALG_GEN_RSA_2048.
+     * algorithm reference to ALG_GEN_RSA.
      * This method creates a new instance of the current private key,
      * depending on the current algorithn reference.
      *
      * \param buf The buffer containing the information to update the private key
      *			field with. The format must be TLV-encoded with the tags:
+     *				- 0x91: keyLength
      *				- 0x92: p
      *				- 0x93: q
      *				- 0x94: 1/q mod p
@@ -1945,22 +1995,47 @@ public class IsoApplet extends Applet implements ExtendedLength {
         short len;
         RSAPrivateCrtKey rsaPrKey = null;
 
-        if(currentAlgorithmRef[0] != ALG_GEN_RSA_2048) {
+        if(currentAlgorithmRef[0] != ALG_GEN_RSA) {
             ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
         }
 
+        if( ! UtilTLV.isTLVconsistent(buf, bOff, bLen)) {
+            ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+        }
+
+        /* Get keyLength */
+        short keyLength = DEF_RSA_KEYLEN;
         try {
-            rsaPrKey = (RSAPrivateCrtKey) KeyBuilder.buildKey(KeyBuilder.TYPE_RSA_CRT_PRIVATE, KeyBuilder.LENGTH_RSA_2048, false);
+            pos = UtilTLV.findTag(buf, bOff, bLen, (byte) 0x91);
+            if(buf[++pos] != (byte) 0x02) { // Length: must be 2.
+                ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+            }
+            keyLength = (short) ((buf[++pos] << 8) + buf[++pos]);
+        } catch (NotFoundException e) {
+            keyLength = DEF_RSA_KEYLEN;
+        } catch (InvalidArgumentsException e) {
+            ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+        }
+
+        switch (keyLength) {
+        case KeyBuilder.LENGTH_RSA_1024:
+        case KeyBuilder.LENGTH_RSA_1536:
+        case KeyBuilder.LENGTH_RSA_2048:
+        case KeyBuilder_LENGTH_RSA_3072:
+        case KeyBuilder.LENGTH_RSA_4096:
+            break;
+        default:
+            ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+        }
+
+        try {
+            rsaPrKey = (RSAPrivateCrtKey) KeyBuilder.buildKey(KeyBuilder.TYPE_RSA_CRT_PRIVATE, keyLength, false);
         } catch(CryptoException e) {
             if(e.getReason() == CryptoException.NO_SUCH_ALGORITHM) {
                 ISOException.throwIt(ISO7816.SW_FUNC_NOT_SUPPORTED);
             }
             ISOException.throwIt(ISO7816.SW_UNKNOWN);
             return;
-        }
-
-        if( ! UtilTLV.isTLVconsistent(buf, bOff, bLen)) {
-            throw InvalidArgumentsException.getInstance();
         }
 
         /* Set P */
