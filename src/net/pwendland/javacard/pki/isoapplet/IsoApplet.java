@@ -423,6 +423,9 @@ public class IsoApplet extends Applet implements ExtendedLength {
         if(lc == 0
                 && state != STATE_CREATION
                 && state != STATE_INITIALISATION) {
+            if( pin.isValidated() ) {
+                ISOException.throwIt(ISO7816.SW_NO_ERROR);
+            }
             // Verification required, return remaining tries.
             ISOException.throwIt((short)(SW_PIN_TRIES_REMAINING | pin.getTriesRemaining()));
         } else if(lc == 0
