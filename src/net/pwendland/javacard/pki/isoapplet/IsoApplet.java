@@ -1380,8 +1380,8 @@ public class IsoApplet extends Applet implements ExtendedLength {
         if(r < len) {
             // If the parameter has fewer bytes than the field length, we fill
             // the MSB's with zeroes.
-            Util.arrayCopyNonAtomic(ram_buf, pos, ram_buf, (short)(pos+len-r), (short)(len-r));
-            Util.arrayFillNonAtomic(ram_buf, pos, r, (byte)0x00);
+            Util.arrayCopyNonAtomic(ram_buf, pos, ram_buf, (short)(pos+len-r), r);
+            Util.arrayFillNonAtomic(ram_buf, pos, (short)(len-r), (byte)0x00);
         } else if (r > len) {
             throw InvalidArgumentsException.getInstance();
         }
@@ -1392,8 +1392,8 @@ public class IsoApplet extends Applet implements ExtendedLength {
         pos += UtilTLV.writeTagAndLen((short)0x82, len, ram_buf, pos);
         r = key.getA(ram_buf, pos);
         if(r < len) {
-            Util.arrayCopyNonAtomic(ram_buf, pos, ram_buf, (short)(pos+len-r), (short)(len-r));
-            Util.arrayFillNonAtomic(ram_buf, pos, r, (byte)0x00);
+            Util.arrayCopyNonAtomic(ram_buf, pos, ram_buf, (short)(pos+len-r), r);
+            Util.arrayFillNonAtomic(ram_buf, pos, (short)(len-r), (byte)0x00);
         } else if (r > len) {
             throw InvalidArgumentsException.getInstance();
         }
@@ -1404,8 +1404,8 @@ public class IsoApplet extends Applet implements ExtendedLength {
         pos += UtilTLV.writeTagAndLen((short)0x83, len, ram_buf, pos);
         r = key.getB(ram_buf, pos);
         if(r < len) {
-            Util.arrayCopyNonAtomic(ram_buf, pos, ram_buf, (short)(pos+len-r), (short)(len-r));
-            Util.arrayFillNonAtomic(ram_buf, pos, r, (byte)0x00);
+            Util.arrayCopyNonAtomic(ram_buf, pos, ram_buf, (short)(pos+len-r), r);
+            Util.arrayFillNonAtomic(ram_buf, pos, (short)(len-r), (byte)0x00);
         } else if (r > len) {
             throw InvalidArgumentsException.getInstance();
         }
@@ -1416,8 +1416,8 @@ public class IsoApplet extends Applet implements ExtendedLength {
         pos += UtilTLV.writeTagAndLen((short)0x84, len, ram_buf, pos);
         r = key.getG(ram_buf, pos);
         if(r < len) {
-            Util.arrayCopyNonAtomic(ram_buf, pos, ram_buf, (short)(pos+len-r), (short)(len-r));
-            Util.arrayFillNonAtomic(ram_buf, pos, r, (byte)0x00);
+            Util.arrayCopyNonAtomic(ram_buf, pos, ram_buf, (short)(pos+len-r), r);
+            Util.arrayFillNonAtomic(ram_buf, pos, (short)(len-r), (byte)0x00);
         } else if (r > len) {
             throw InvalidArgumentsException.getInstance();
         }
@@ -1428,8 +1428,8 @@ public class IsoApplet extends Applet implements ExtendedLength {
         pos += UtilTLV.writeTagAndLen((short)0x85, len, ram_buf, pos);
         r = key.getR(ram_buf, pos);
         if(r < len) {
-            Util.arrayCopyNonAtomic(ram_buf, pos, ram_buf, (short)(pos+len-r), (short)(len-r));
-            Util.arrayFillNonAtomic(ram_buf, pos, r, (byte)0x00);
+            Util.arrayCopyNonAtomic(ram_buf, pos, ram_buf, (short)(pos+len-r), r);
+            Util.arrayFillNonAtomic(ram_buf, pos, (short)(len-r), (byte)0x00);
         } else if (r > len) {
             throw InvalidArgumentsException.getInstance();
         }
@@ -1440,8 +1440,8 @@ public class IsoApplet extends Applet implements ExtendedLength {
         pos += UtilTLV.writeTagAndLen((short)0x86, len, ram_buf, pos);
         r = key.getW(ram_buf, pos);
         if(r < len) {
-            Util.arrayCopyNonAtomic(ram_buf, pos, ram_buf, (short)(pos+len-r), (short)(len-r));
-            Util.arrayFillNonAtomic(ram_buf, pos, r, (byte)0x00);
+            Util.arrayCopyNonAtomic(ram_buf, pos, ram_buf, (short)(pos+len-r), r);
+            Util.arrayFillNonAtomic(ram_buf, pos, (short)(len-r), (byte)0x00);
         } else if (r > len) {
             throw InvalidArgumentsException.getInstance();
         }
