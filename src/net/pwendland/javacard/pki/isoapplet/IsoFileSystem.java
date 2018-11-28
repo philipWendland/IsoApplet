@@ -46,7 +46,7 @@ public class IsoFileSystem extends DedicatedFile {
 
     private Object[] currentlySelectedFiles = null;
     short currentRecordNum;
-    private boolean[] isUserAuthenticated = null;
+    private byte[] isUserAuthenticated = null;
 
 
     /**
@@ -65,7 +65,7 @@ public class IsoFileSystem extends DedicatedFile {
     public IsoFileSystem(short fileID, byte[] fileControlInformation) {
         super(fileID, fileControlInformation);
         this.currentRecordNum = 0;
-        this.isUserAuthenticated = JCSystem.makeTransientBooleanArray((short) 1, JCSystem.CLEAR_ON_DESELECT);
+        this.isUserAuthenticated = JCSystem.makeTransientByteArray((short) 1, JCSystem.CLEAR_ON_DESELECT);
         this.currentlySelectedFiles = JCSystem.makeTransientObjectArray((short) 2, JCSystem.CLEAR_ON_DESELECT);
         this.currentlySelectedFiles[OFFSET_CURRENT_DF] = this;
     }
@@ -157,8 +157,12 @@ public class IsoFileSystem extends DedicatedFile {
      * even those that the IsoFileSystem saves references for, if it uses any other method to manipulate
      * files.
      */
-    public void setUserAuthenticated(boolean isAuthenticated) {
-        this.isUserAuthenticated[0] = isAuthenticated;
+    public void setUserAuthenticated(byte pin) {
+        this.isUserAuthenticated[0] = pin;
+    }
+    public void setUserAuthenticated(boolean b) {
+        if (!b)
+            this.isUserAuthenticated[0] = (byte)0;
     }
 
     /**
@@ -187,10 +191,9 @@ public class IsoFileSystem extends DedicatedFile {
             return;
         } else if(acl == (byte) 0xFF) { // Never.
             ISOException.throwIt(ISO7816.SW_SECURITY_STATUS_NOT_SATISFIED);
-        } else if(acl == (byte) 0x90
-                  || (byte)(acl&(byte)0x9F) == (byte)0x10) {
+        } else if((acl & 0x90) == 0x90) {
             // PIN required.
-            if(isUserAuthenticated[0]) {
+            if(isUserAuthenticated[0] == (byte)((acl & 0xF) + 1)) {
                 return;
             } else {
                 ISOException.throwIt(ISO7816.SW_SECURITY_STATUS_NOT_SATISFIED);
