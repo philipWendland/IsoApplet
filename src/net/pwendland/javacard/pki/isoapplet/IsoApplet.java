@@ -83,6 +83,12 @@ public class IsoApplet extends Applet implements ExtendedLength {
     public static final byte INS_DELETE_KEY = (byte) 0xE5;
     public static final byte INS_INITIALISE_CARD = (byte) 0x51;
     public static final byte INS_ERASE_CARD = (byte) 0x50;
+    public static final byte INS_GET_VALUE = (byte) 0x6C;
+
+    // GET VALUE P1 parameters:
+    public static final byte OPT_P1_SERIAL = (byte) 0x01;
+    public static final byte OPT_P1_MEM = (byte) 0x02;
+
     // Status words:
     public static final short SW_PIN_TRIES_REMAINING = 0x63C0; // See ISO 7816-4 section 7.5.1
     public static final short SW_COMMAND_NOT_ALLOWED_GENERAL = 0x6900;
@@ -159,6 +165,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
     private static final byte TAG_SOPIN_LENGTH = (byte)0x06;
     private static final byte TAG_HISTBYTES = (byte)0x07;
     private static final byte TAG_TRANSPORT_KEY = (byte)0x08;
+    private static final byte TAG_SERIAL = (byte)0x09;
 
     /* Member variables: */
     private byte state;
@@ -184,6 +191,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
     private byte histBytes[] = null;
     private boolean puk_is_set = false;
     private byte transport_key[] = null;
+    private byte serial[] = null;
 
     /**
      * \brief Sets default parameters (serial, etc).
@@ -222,6 +230,10 @@ public class IsoApplet extends Applet implements ExtendedLength {
             sopin_length = SOPIN_LENGTH;
             histBytes = null;
             transport_key = null;
+            if (init) {
+                serial = new byte[4];
+                RandomData.getInstance(RandomData.ALG_SECURE_RANDOM).generateData(serial, (short)0, (short)4);
+            }
             return;
         }
         try {
@@ -306,6 +318,20 @@ public class IsoApplet extends Applet implements ExtendedLength {
                 Util.arrayCopyNonAtomic(bArray, ++pos, transport_key, (short) 0, len);
             } catch (NotFoundException e) {
                 transport_key = null;
+            }
+            if (init) {
+                try {
+                    pos = UtilTLV.findTag(bArray, bOff, La, TAG_SERIAL);
+                    len = UtilTLV.decodeLengthField(bArray, ++pos);
+                    if(len > 8) {
+                        ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+                    }
+                    serial = new byte[len];
+                    Util.arrayCopyNonAtomic(bArray, ++pos, serial, (short) 0, len);
+                } catch (NotFoundException e) {
+                    serial = new byte[4];
+                    RandomData.getInstance(RandomData.ALG_SECURE_RANDOM).generateData(serial, (short)0, (short)4);
+                }
             }
         } catch (InvalidArgumentsException e) {
             ISOException.throwIt(ISO7816.SW_DATA_INVALID);
@@ -567,6 +593,9 @@ public class IsoApplet extends Applet implements ExtendedLength {
                 break;
             case INS_ERASE_CARD:
                 processEraseCard(apdu);
+                break;
+            case INS_GET_VALUE:
+                processGetValue(apdu);
                 break;
             default:
                 ISOException.throwIt(ISO7816.SW_INS_NOT_SUPPORTED);
@@ -2274,6 +2303,46 @@ public class IsoApplet extends Applet implements ExtendedLength {
             sopin = new OwnerPIN(SOPIN_MAX_TRIES, sopin_length);
         fs = new IsoFileSystem();
         apdu.setOutgoingAndSend((short) 0, (short) 0);
+    }
+
+    /**
+     * \brief Process the GET VALUE instruction (INS = 6C).
+     *
+     * Returns selected data
+     *
+     * \param apdu The GET VALUE apdu
+     *
+     * \throw ISOException SW_INCORRECT_P1P2, SW_WRONG_LENGTH.
+     */
+    private void processGetValue(APDU apdu) {
+        byte[] buf = apdu.getBuffer();
+        byte p1 = buf[ISO7816.OFFSET_P1];
+        byte p2 = buf[ISO7816.OFFSET_P2];
+
+        if(p1 == OPT_P1_SERIAL && p2 == 0x00) {
+            // Get serial
+            short le = apdu.setOutgoing();
+            if(le < serial.length) {
+                ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
+            }
+            Util.arrayCopyNonAtomic(serial, (short)0, buf, (short)0, (short)serial.length);
+            apdu.setOutgoingLength((short) serial.length);
+            apdu.sendBytes((short) 0, (short) serial.length);
+        } else if(p1 == OPT_P1_MEM) {
+            // Get memory
+            short le = apdu.setOutgoing();
+            if(le < 4) {
+                ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
+            }
+            short s = JCSystem.getAvailableMemory(p2);
+            buf[0] = 0;
+            buf[1] = 0;
+            buf[2] = (byte)(s >> 8);
+            buf[3] = (byte)(s & 0xFF);
+            apdu.setOutgoingLength((short) 4);
+            apdu.sendBytes((short) 0, (short) 4);
+        } else
+            ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
     }
 
 } // class IsoApplet
