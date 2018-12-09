@@ -2502,7 +2502,12 @@ public class IsoApplet extends Applet implements ExtendedLength {
         if(p1 != 0x00 || p2 != 0x00) {
             ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
         }
-        if( transport_key != null && state != STATE_CREATION && !sopin.isValidated() ) {
+        // Require the SOPIN in STATE_OPERATIONAL_* and STATE_INITIALISATION.
+        // STATE_TERMINATED and STATE_CREATION don't require SOPIN to be verified.
+        if((state == STATE_OPERATIONAL_ACTIVATED
+                    || state == STATE_OPERATIONAL_DEACTIVATED
+                    || state == STATE_INITIALISATION)
+                && !sopin.isValidated()) {
             ISOException.throwIt(ISO7816.SW_SECURITY_STATUS_NOT_SATISFIED);
         }
         // Erase PIN, PUK & SO PIN (only if transport key was not set)
@@ -2541,7 +2546,6 @@ public class IsoApplet extends Applet implements ExtendedLength {
         if (transport_key == null)
             sopin = new OwnerPIN(SOPIN_MAX_TRIES, sopin_length);
         fs = new IsoFileSystem();
-        apdu.setOutgoingAndSend((short) 0, (short) 0);
     }
 
     /**
