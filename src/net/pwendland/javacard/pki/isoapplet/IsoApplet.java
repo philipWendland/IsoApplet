@@ -135,7 +135,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
     private static final byte STATE_INITIALISATION = (byte) 0x01; // SO PIN set, PIN & PUK not set yet.
     private static final byte STATE_OPERATIONAL_ACTIVATED = (byte) 0x05; // PIN is set, data is secured.
     private static final byte STATE_OPERATIONAL_DEACTIVATED = (byte) 0x04; // Applet usage is deactivated. (Unused at the moment.)
-    private static final byte STATE_TERMINATED = (byte) 0x0C; // Applet usage is terminated. (Unused at the moment.)
+    private static final byte STATE_TERMINATED = (byte) 0x0C; // Applet usage is terminated.
 
     private static final byte API_FEATURE_EXT_APDU = (byte) 0x01;
     private static final byte API_FEATURE_SECURE_RANDOM = (byte) 0x02;
