@@ -693,7 +693,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
             puk.reset();
             sopin.reset();
             fs.setUserAuthenticated(false);
-            ISOException.throwIt(ISO7816.SW_NO_ERROR);
+            return;
         }
 
         // P1 00 only at the moment. (key-reference 01 = PIN, key-reference 0F = SO PIN)
@@ -726,7 +726,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
                     ISOException.throwIt(SW_NO_PIN_DEFINED);
                 } else if (state == STATE_OPERATIONAL_ACTIVATED) {
                     if( pin.isValidated() ) {
-                        ISOException.throwIt(ISO7816.SW_NO_ERROR);
+                        return;
                     }
                     ISOException.throwIt((short)(SW_PIN_TRIES_REMAINING | pin.getTriesRemaining()));
                 } else if (state == STATE_OPERATIONAL_DEACTIVATED) {
@@ -737,12 +737,12 @@ public class IsoApplet extends Applet implements ExtendedLength {
                 if (state == STATE_CREATION) {
                     if (transport_key == null || sopin.isValidated()) {
                         // No verification required.
-                        ISOException.throwIt(ISO7816.SW_NO_ERROR);
+                        return;
                     }
                     ISOException.throwIt((short)(SW_PIN_TRIES_REMAINING | sopin.getTriesRemaining()));
                 } else if (state == STATE_INITIALISATION || state == STATE_OPERATIONAL_ACTIVATED) {
                     if( sopin.isValidated() ) {
-                        ISOException.throwIt(ISO7816.SW_NO_ERROR);
+                        return;
                     }
                     ISOException.throwIt((short)(SW_PIN_TRIES_REMAINING | sopin.getTriesRemaining()));
                 } else if (state == STATE_OPERATIONAL_DEACTIVATED) {
@@ -847,7 +847,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
 
                     state = STATE_INITIALISATION;
 
-                    ISOException.throwIt(ISO7816.SW_NO_ERROR);
+                    return;
                 } else {
                     ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
                 }
@@ -1334,7 +1334,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
         if(len <= 0) {
             ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_BYTES_REMAINING] = 0;
             ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_POS] = 0;
-            ISOException.throwIt(ISO7816.SW_NO_ERROR);
+            return;
         }
 
         if((short)(pos + len) > ram_buf_size) {
@@ -1361,7 +1361,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
             } else {
                 ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_BYTES_REMAINING] = 0;
                 ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_POS] = 0;
-                ISOException.throwIt(ISO7816.SW_NO_ERROR);
+                return;
             }
         }
     }
@@ -2467,7 +2467,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
         }
 
         if( state != STATE_CREATION ) {
-            ISOException.throwIt(ISO7816.SW_NO_ERROR);
+            return;
         }
 
         /**
