@@ -372,12 +372,12 @@ public class IsoApplet extends Applet implements ExtendedLength {
         if(selectingApplet()) {
             // setATRHistBytes can't be invoked from constructor, so do it here.
             if (histBytes != null) {
-                Util.arrayCopyNonAtomic(histBytes, (short) 0, buffer, (short) 0, (byte) histBytes.length);
                 try {
-                    if (GPSystem.setATRHistBytes(buffer, (short) 0, (byte) histBytes.length)) {
+                    if (GPSystem.setATRHistBytes(histBytes, (short) 0, (byte) histBytes.length)) {
                         histBytes = null;
                     }
                 } catch (Exception e) {
+                    // silently ignore error
                 }
             }
             buffer[0] = API_VERSION_MAJOR;
