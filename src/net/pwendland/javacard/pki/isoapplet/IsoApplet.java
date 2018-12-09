@@ -49,8 +49,8 @@ import org.globalplatform.GPSystem;
  * This applet has a filesystem and accepts relevant ISO 7816 instructions.
  * Access control is forced through a PIN and a SO PIN. PIN can be unblocked with PUK.
  * The PUK is optional (Set DEF_PUK_MUST_BE_SET). By default PUK is set with SO PIN value.
- * Security Operations are being processed directly in
- * this class. Only private keys are stored as Key-objects. Only security
+ * Security Operations are being processed directly in this class.
+ * Only private keys are stored as Key-objects. Only security
  * operations with private keys can be performed (decrypt with RSA, sign with RSA,
  * sign with ECDSA).
  *
@@ -65,10 +65,10 @@ public class IsoApplet extends Applet implements ExtendedLength {
     public static final boolean DEF_EXT_APDU = false;
     public static final boolean DEF_PRIVATE_KEY_IMPORT_ALLOWED = false;
     public static final boolean DEF_PUK_MUST_BE_SET = false;
-    public static final byte    DEF_PIN_MAX_TRIES = 3;
-    public static final byte    DEF_PIN_MAX_LENGTH = 12;
-    public static final byte    DEF_PUK_LENGTH = 12;
-    public static final byte    DEF_SOPIN_LENGTH = 12;
+    public static final byte DEF_PIN_MAX_TRIES = 3;
+    public static final byte DEF_PIN_MAX_LENGTH = 12;
+    public static final byte DEF_PUK_LENGTH = 12;
+    public static final byte DEF_SOPIN_LENGTH = 12;
 
     /* ISO constants not in the "ISO7816" interface */
     // File system related INS:
@@ -91,11 +91,6 @@ public class IsoApplet extends Applet implements ExtendedLength {
     public static final byte INS_INITIALISE_CARD = (byte) 0x51;
     public static final byte INS_ERASE_CARD = (byte) 0x50;
     public static final byte INS_GET_VALUE = (byte) 0x6C;
-
-    // GET VALUE P1 parameters:
-    public static final byte OPT_P1_SERIAL = (byte) 0x01;
-    public static final byte OPT_P1_MEM = (byte) 0x02;
-    public static final byte OPT_P1_INITCOUNTER = (byte) 0x03;
 
     // Status words:
     public static final short SW_PIN_TRIES_REMAINING = 0x63C0; // See ISO 7816-4 section 7.5.1
@@ -172,16 +167,6 @@ public class IsoApplet extends Applet implements ExtendedLength {
     private static final short RAM_CHAINING_CACHE_OFFSET_CURRENT_INS = (short) 2;
     private static final short RAM_CHAINING_CACHE_OFFSET_CURRENT_P1P2 = (short) 3;
 
-    private static final byte TAG_PIN_MAX_TRIES = (byte)0x01;
-    private static final byte TAG_PUK_MUST_BE_SET = (byte)0x02;
-    private static final byte TAG_ENABLE_KEY_IMPORT = (byte)0x03;
-    private static final byte TAG_PIN_MAX_LENGTH = (byte)0x04;
-    private static final byte TAG_PUK_LENGTH = (byte)0x05;
-    private static final byte TAG_SOPIN_LENGTH = (byte)0x06;
-    private static final byte TAG_HISTBYTES = (byte)0x07;
-    private static final byte TAG_TRANSPORT_KEY = (byte)0x08;
-    private static final byte TAG_SERIAL = (byte)0x09;
-
     /* Member variables: */
     private byte state;
     private IsoFileSystem fs = null;
@@ -213,150 +198,6 @@ public class IsoApplet extends Applet implements ExtendedLength {
     private byte serial[] = null;
     private short initCounter = 0;
 
-    /**
-     * \brief Sets default parameters (serial, etc).
-     *
-     * \param bArray
-     *			the array containing installation parameters
-     * \param bOffset
-     *			the starting offset in bArray
-     * \param bLength
-     *			the length in bytes of the parameter data in bArray
-     */
-    private void setDefaultValues(byte[] bArray, short bOffset, byte bLength, boolean init) {
-        // Find parameters offset (La) in bArray
-        byte Li, Lc, La;
-        short bOff;
-        short pos, len;
-
-        if (init) {
-            // Find parameters offset (La) in bArray
-            Li = bArray[bOffset];
-            Lc = bArray[(short)(bOffset + Li + 1)];
-            La = bArray[(short)(bOffset + Li + Lc + 2)];
-            bOff = (short)(bOffset + Li + Lc + 3);
-        } else {
-            La = bLength;
-            bOff = bOffset;
-        }
-
-        if(La == 0) {
-            // Default parameters
-            pin_max_tries = DEF_PIN_MAX_TRIES;
-            puk_must_be_set = DEF_PUK_MUST_BE_SET;
-            private_key_import_allowed = DEF_PRIVATE_KEY_IMPORT_ALLOWED;
-            pin_max_length = DEF_PIN_MAX_LENGTH;
-            puk_length = DEF_PUK_LENGTH;
-            sopin_length = DEF_SOPIN_LENGTH;
-            histBytes = null;
-            transport_key = null;
-            if (init) {
-                serial = new byte[4];
-                RandomData.getInstance(RandomData.ALG_SECURE_RANDOM).generateData(serial, (short)0, (short)4);
-            }
-            return;
-        }
-        try {
-            try {
-                pos = UtilTLV.findTag(bArray, bOff, La, TAG_PIN_MAX_TRIES);
-                len = UtilTLV.decodeLengthField(bArray, ++pos);
-                if(len != 1) {
-                    ISOException.throwIt(ISO7816.SW_DATA_INVALID);
-                }
-                pin_max_tries = bArray[++pos];
-            } catch (NotFoundException e) {
-                pin_max_tries = DEF_PIN_MAX_TRIES;
-            }
-            try {
-                pos = UtilTLV.findTag(bArray, bOff, La, TAG_PUK_MUST_BE_SET);
-                len = UtilTLV.decodeLengthField(bArray, ++pos);
-                if(len != 1) {
-                    ISOException.throwIt(ISO7816.SW_DATA_INVALID);
-                }
-                puk_must_be_set = bArray[++pos] != 0;
-            } catch (NotFoundException e) {
-                puk_must_be_set = DEF_PUK_MUST_BE_SET;
-            }
-            try {
-                pos = UtilTLV.findTag(bArray, bOff, La, TAG_ENABLE_KEY_IMPORT);
-                len = UtilTLV.decodeLengthField(bArray, ++pos);
-                if(len != 1) {
-                    ISOException.throwIt(ISO7816.SW_DATA_INVALID);
-                }
-                private_key_import_allowed = bArray[++pos] != 0;
-            } catch (NotFoundException e) {
-                private_key_import_allowed = DEF_PRIVATE_KEY_IMPORT_ALLOWED;
-            }
-            try {
-                pos = UtilTLV.findTag(bArray, bOff, La, TAG_PIN_MAX_LENGTH);
-                len = UtilTLV.decodeLengthField(bArray, ++pos);
-                if(len != 1) {
-                    ISOException.throwIt(ISO7816.SW_DATA_INVALID);
-                }
-                pin_max_length = bArray[++pos];
-            } catch (NotFoundException e) {
-                pin_max_length = DEF_PIN_MAX_LENGTH;
-            }
-            try {
-                pos = UtilTLV.findTag(bArray, bOff, La, TAG_PUK_LENGTH);
-                len = UtilTLV.decodeLengthField(bArray, ++pos);
-                if(len != 1) {
-                    ISOException.throwIt(ISO7816.SW_DATA_INVALID);
-                }
-                puk_length = bArray[++pos];
-            } catch (NotFoundException e) {
-                puk_length = DEF_PUK_LENGTH;
-            }
-            try {
-                pos = UtilTLV.findTag(bArray, bOff, La, TAG_HISTBYTES);
-                len = UtilTLV.decodeLengthField(bArray, ++pos);
-                if(len > 8) {
-                    ISOException.throwIt(ISO7816.SW_DATA_INVALID);
-                }
-                histBytes = new byte[len];
-                Util.arrayCopyNonAtomic(bArray, ++pos, histBytes, (short) 0, len);
-            } catch (NotFoundException e) {
-                histBytes = null;
-            }
-            try {
-                pos = UtilTLV.findTag(bArray, bOff, La, TAG_SOPIN_LENGTH);
-                len = UtilTLV.decodeLengthField(bArray, ++pos);
-                if(len != 1) {
-                    ISOException.throwIt(ISO7816.SW_DATA_INVALID);
-                }
-                sopin_length = bArray[++pos];
-            } catch (NotFoundException e) {
-                sopin_length = DEF_SOPIN_LENGTH;
-            }
-            try {
-                pos = UtilTLV.findTag(bArray, bOff, La, TAG_TRANSPORT_KEY);
-                len = UtilTLV.decodeLengthField(bArray, ++pos);
-                if(len != sopin_length) {
-                    ISOException.throwIt(ISO7816.SW_DATA_INVALID);
-                }
-                transport_key = new byte[len];
-                Util.arrayCopyNonAtomic(bArray, ++pos, transport_key, (short) 0, len);
-            } catch (NotFoundException e) {
-                transport_key = null;
-            }
-            if (init) {
-                try {
-                    pos = UtilTLV.findTag(bArray, bOff, La, TAG_SERIAL);
-                    len = UtilTLV.decodeLengthField(bArray, ++pos);
-                    if(len > 8) {
-                        ISOException.throwIt(ISO7816.SW_DATA_INVALID);
-                    }
-                    serial = new byte[len];
-                    Util.arrayCopyNonAtomic(bArray, ++pos, serial, (short) 0, len);
-                } catch (NotFoundException e) {
-                    serial = new byte[4];
-                    RandomData.getInstance(RandomData.ALG_SECURE_RANDOM).generateData(serial, (short)0, (short)4);
-                }
-            }
-        } catch (InvalidArgumentsException e) {
-            ISOException.throwIt(ISO7816.SW_DATA_INVALID);
-        }
-    }
 
     /**
      * \brief Installs this applet.
@@ -377,7 +218,16 @@ public class IsoApplet extends Applet implements ExtendedLength {
      */
     protected IsoApplet(byte[] bArray, short bOffset, byte bLength) {
         api_features = 0;
-        setDefaultValues(bArray, bOffset, bLength, true);
+
+        // Find parameters offset (La) in bArray
+        byte li, lc, la;
+        short bOff;
+        // Find parameters offset (la) in bArray
+        li = bArray[bOffset];
+        lc = bArray[(short)(bOffset + li + 1)];
+        la = bArray[(short)(bOffset + li + lc + 2)];
+        bOff = (short)(bOffset + li + lc + 3);
+        setDefaultValues(bArray, bOff, la, true);
         pin = new OwnerPIN(pin_max_tries, pin_max_length);
         puk = new OwnerPIN(PUK_MAX_TRIES, puk_length);
         sopin = new OwnerPIN(SOPIN_MAX_TRIES, sopin_length);
@@ -584,6 +434,19 @@ public class IsoApplet extends Applet implements ExtendedLength {
             ISOException.throwIt(SW_COMMAND_NOT_ALLOWED_GENERAL);
         }
 
+        // INS dispatching
+        switch(ins) {
+            // We use VERIFY apdu with proprietary class byte to bypass pinpad firewalled readers
+            case INS_VERIFY:
+                processVerify(apdu);
+                break;
+            // We use CHANGE_REFERENCE_DATA apdu with proprietary class byte for
+            // implicit transition from STATE_CREATION to STATE_INITIALISATION
+            case INS_CHANGE_REFERENCE_DATA:
+                processChangeReferenceData(apdu);
+                break;
+        }
+
         if(apdu.isISOInterindustryCLA()) {
             switch (ins) {
             case ISO7816.INS_SELECT:
@@ -591,9 +454,6 @@ public class IsoApplet extends Applet implements ExtendedLength {
                 break;
             case INS_READ_BINARY:
                 fs.processReadBinary(apdu);
-                break;
-            case INS_VERIFY:
-                processVerify(apdu);
                 break;
             case INS_MANAGE_SECURITY_ENVIRONMENT:
                 processManageSecurityEnvironment(apdu);
@@ -606,9 +466,6 @@ public class IsoApplet extends Applet implements ExtendedLength {
                 break;
             case INS_UPDATE_BINARY:
                 fs.processUpdateBinary(apdu);
-                break;
-            case INS_CHANGE_REFERENCE_DATA:
-                processChangeReferenceData(apdu);
                 break;
             case INS_DELETE_FILE:
                 fs.processDeleteFile(apdu);
@@ -636,15 +493,6 @@ public class IsoApplet extends Applet implements ExtendedLength {
             } // switch
         } else {
             switch (ins) {
-            // We use VERIFY apdu with proprietary class byte to bypass pinpad firewalled readers
-            case INS_VERIFY:
-                processVerify(apdu);
-                break;
-            // We use CHANGE_REFERENCE_DATA apdu with proprietary class byte for
-            // implicit transition from STATE_CREATION to STATE_INITIALISATION
-            case INS_CHANGE_REFERENCE_DATA:
-                processChangeReferenceData(apdu);
-                break;
             case INS_DELETE_KEY:
                 processDeleteKey(apdu);
                 break;
@@ -678,6 +526,149 @@ public class IsoApplet extends Applet implements ExtendedLength {
     static boolean isCommandChainingCLA(APDU apdu) {
         byte[] buf = apdu.getBuffer();
         return ((byte)(buf[0] & (byte)0x10) == (byte)0x10);
+    }
+
+    /**
+     * \brief Sets default parameters (serial, etc).
+     *
+     * \param bArray
+     *			the array containing installation parameters
+     * \param bOffset
+     *			the starting offset in bArray
+     * \param bLength
+     *			the length in bytes of the parameter data in bArray
+     * \param init
+     *	        TODO
+     */
+    private void setDefaultValues(byte[] bArray, short bOffset, byte bLength, boolean init) {
+        final byte TAG_PIN_MAX_TRIES = (byte)0x01;
+        final byte TAG_PUK_MUST_BE_SET = (byte)0x02;
+        final byte TAG_ENABLE_KEY_IMPORT = (byte)0x03;
+        final byte TAG_PIN_MAX_LENGTH = (byte)0x04;
+        final byte TAG_PUK_LENGTH = (byte)0x05;
+        final byte TAG_SOPIN_LENGTH = (byte)0x06;
+        final byte TAG_HISTBYTES = (byte)0x07;
+        final byte TAG_TRANSPORT_KEY = (byte)0x08;
+        final byte TAG_SERIAL = (byte)0x09;
+
+        short pos, len;
+
+        if(bLength == 0) {
+            // Default parameters
+            pin_max_tries = DEF_PIN_MAX_TRIES;
+            puk_must_be_set = DEF_PUK_MUST_BE_SET;
+            private_key_import_allowed = DEF_PRIVATE_KEY_IMPORT_ALLOWED;
+            pin_max_length = DEF_PIN_MAX_LENGTH;
+            puk_length = DEF_PUK_LENGTH;
+            sopin_length = DEF_SOPIN_LENGTH;
+            histBytes = null;
+            transport_key = null;
+            if (init) {
+                serial = new byte[4];
+                RandomData.getInstance(RandomData.ALG_SECURE_RANDOM).generateData(serial, (short)0, (short)4);
+            }
+            return;
+        }
+        try {
+            try {
+                pos = UtilTLV.findTag(bArray, bOffset, bLength, TAG_PIN_MAX_TRIES);
+                len = UtilTLV.decodeLengthField(bArray, ++pos);
+                if(len != 1) {
+                    ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+                }
+                pin_max_tries = bArray[++pos];
+            } catch (NotFoundException e) {
+                pin_max_tries = DEF_PIN_MAX_TRIES;
+            }
+            try {
+                pos = UtilTLV.findTag(bArray, bOffset, bLength, TAG_PUK_MUST_BE_SET);
+                len = UtilTLV.decodeLengthField(bArray, ++pos);
+                if(len != 1) {
+                    ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+                }
+                puk_must_be_set = bArray[++pos] != 0;
+            } catch (NotFoundException e) {
+                puk_must_be_set = DEF_PUK_MUST_BE_SET;
+            }
+            try {
+                pos = UtilTLV.findTag(bArray, bOffset, bLength, TAG_ENABLE_KEY_IMPORT);
+                len = UtilTLV.decodeLengthField(bArray, ++pos);
+                if(len != 1) {
+                    ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+                }
+                private_key_import_allowed = bArray[++pos] != 0;
+            } catch (NotFoundException e) {
+                private_key_import_allowed = DEF_PRIVATE_KEY_IMPORT_ALLOWED;
+            }
+            try {
+                pos = UtilTLV.findTag(bArray, bOffset, bLength, TAG_PIN_MAX_LENGTH);
+                len = UtilTLV.decodeLengthField(bArray, ++pos);
+                if(len != 1) {
+                    ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+                }
+                pin_max_length = bArray[++pos];
+            } catch (NotFoundException e) {
+                pin_max_length = DEF_PIN_MAX_LENGTH;
+            }
+            try {
+                pos = UtilTLV.findTag(bArray, bOffset, bLength, TAG_PUK_LENGTH);
+                len = UtilTLV.decodeLengthField(bArray, ++pos);
+                if(len != 1) {
+                    ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+                }
+                puk_length = bArray[++pos];
+            } catch (NotFoundException e) {
+                puk_length = DEF_PUK_LENGTH;
+            }
+            try {
+                pos = UtilTLV.findTag(bArray, bOffset, bLength, TAG_HISTBYTES);
+                len = UtilTLV.decodeLengthField(bArray, ++pos);
+                if(len > 8) {
+                    ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+                }
+                histBytes = new byte[len];
+                Util.arrayCopyNonAtomic(bArray, ++pos, histBytes, (short) 0, len);
+            } catch (NotFoundException e) {
+                histBytes = null;
+            }
+            try {
+                pos = UtilTLV.findTag(bArray, bOffset, bLength, TAG_SOPIN_LENGTH);
+                len = UtilTLV.decodeLengthField(bArray, ++pos);
+                if(len != 1) {
+                    ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+                }
+                sopin_length = bArray[++pos];
+            } catch (NotFoundException e) {
+                sopin_length = DEF_SOPIN_LENGTH;
+            }
+            try {
+                pos = UtilTLV.findTag(bArray, bOffset, bLength, TAG_TRANSPORT_KEY);
+                len = UtilTLV.decodeLengthField(bArray, ++pos);
+                if(len != sopin_length) {
+                    ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+                }
+                transport_key = new byte[len];
+                Util.arrayCopyNonAtomic(bArray, ++pos, transport_key, (short) 0, len);
+            } catch (NotFoundException e) {
+                transport_key = null;
+            }
+            if (init) {
+                try {
+                    pos = UtilTLV.findTag(bArray, bOffset, bLength, TAG_SERIAL);
+                    len = UtilTLV.decodeLengthField(bArray, ++pos);
+                    if(len > 8) {
+                        ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+                    }
+                    serial = new byte[len];
+                    Util.arrayCopyNonAtomic(bArray, ++pos, serial, (short) 0, len);
+                } catch (NotFoundException e) {
+                    serial = new byte[4];
+                    RandomData.getInstance(RandomData.ALG_SECURE_RANDOM).generateData(serial, (short)0, (short)4);
+                }
+            }
+        } catch (InvalidArgumentsException e) {
+            ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+        }
     }
 
     /**
@@ -2563,6 +2554,11 @@ public class IsoApplet extends Applet implements ExtendedLength {
      * \throw ISOException SW_INCORRECT_P1P2, SW_WRONG_LENGTH.
      */
     private void processGetValue(APDU apdu) {
+        // GET VALUE P1 parameters:
+        final byte OPT_P1_SERIAL = (byte) 0x01;
+        final byte OPT_P1_MEM = (byte) 0x02;
+        final byte OPT_P1_INITCOUNTER = (byte) 0x03;
+
         byte[] buf = apdu.getBuffer();
         byte p1 = buf[ISO7816.OFFSET_P1];
         byte p2 = buf[ISO7816.OFFSET_P2];
