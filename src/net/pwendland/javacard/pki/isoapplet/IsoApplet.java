@@ -418,19 +418,14 @@ public class IsoApplet extends Applet implements ExtendedLength {
         }
 
         // INS dispatching
-        switch(ins) {
+        if(ins == INS_VERIFY) {
             // We use VERIFY apdu with proprietary class byte to bypass pinpad firewalled readers
-            case INS_VERIFY:
-                processVerify(apdu);
-                break;
+            processVerify(apdu);
+        } else if(ins == INS_CHANGE_REFERENCE_DATA) {
             // We use CHANGE_REFERENCE_DATA apdu with proprietary class byte for
             // implicit transition from STATE_CREATION to STATE_INITIALISATION
-            case INS_CHANGE_REFERENCE_DATA:
-                processChangeReferenceData(apdu);
-                break;
-        }
-
-        if(apdu.isISOInterindustryCLA()) {
+            processChangeReferenceData(apdu);
+        } else if(apdu.isISOInterindustryCLA()) {
             switch (ins) {
             case ISO7816.INS_SELECT:
                 fs.processSelectFile(apdu);
@@ -475,6 +470,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
                 ISOException.throwIt(ISO7816.SW_INS_NOT_SUPPORTED);
             } // switch
         } else {
+            // ! apdu.isISOInterindustryCLA()
             switch (ins) {
             case INS_DELETE_KEY:
                 processDeleteKey(apdu);
