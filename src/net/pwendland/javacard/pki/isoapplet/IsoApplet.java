@@ -138,7 +138,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
 
     private static final byte API_FEATURE_EXT_APDU = (byte) 0x01;
     private static final byte API_FEATURE_SECURE_RANDOM = (byte) 0x02;
-    private static final byte API_FEATURE_ECDSA_SHA1 = (byte) 0x04;
+    private static final byte API_FEATURE_ECDSA_SHA1 = (byte) 0x04; // This feature has been disabled, do not use this constant for something else!
     private static final byte API_FEATURE_RSA_4096 = (byte) 0x08;
     private static final byte API_FEATURE_ECDSA_PRECOMPUTED_HASH = (byte) 0x10;
     private static final byte API_FEATURE_ECDH = (byte) 0x20;
