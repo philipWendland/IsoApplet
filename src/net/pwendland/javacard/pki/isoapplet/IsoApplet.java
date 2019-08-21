@@ -93,8 +93,9 @@ public class IsoApplet extends Applet implements ExtendedLength {
     // Keys:
     private static final short KEY_MAX_COUNT = 16;
 
-    private static final byte ALG_GEN_RSA_2048 = (byte) 0xF3;
+    private static final byte ALG_GEN_RSA_2048  = (byte) 0xF3;
     private static final byte ALG_RSA_PAD_PKCS1 = (byte) 0x11;
+    private static final byte ALG_RSA_NOPAD     = (byte) 0x12;
 
     private static final byte ALG_GEN_EC = (byte) 0xEC;
     private static final byte ALG_ECDSA_SHA1 = (byte) 0x21;
@@ -148,6 +149,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
     private byte[] ram_buf = null;
     private short[] ram_chaining_cache = null;
     private Cipher rsaPkcs1Cipher = null;
+    private Cipher rsaNoPad = null;
     private Signature ecdsaSignature = null;
     private RandomData randomData = null;
     private byte api_features;
@@ -182,6 +184,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
         keys = new Key[KEY_MAX_COUNT];
 
         rsaPkcs1Cipher = Cipher.getInstance(Cipher.ALG_RSA_PKCS1, false);
+        rsaNoPad = Cipher.getInstance(Cipher.ALG_RSA_NOPAD, false);
 
         try {
             ecdsaSignature = Signature.getInstance(Signature.ALG_ECDSA_SHA, false);
@@ -1344,6 +1347,43 @@ public class IsoApplet extends Applet implements ExtendedLength {
             apdu.sendBytesLong(ram_buf, (short) 0, sigLen);
             break;
 
+        case ALG_RSA_NOPAD:        
+            if(ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_POS] == (short) 0) {
+              //init
+                if(isCommandChainingCLA(apdu)) {
+                    //receive
+                    lc = apdu.setIncomingAndReceive();
+                    offset_cdata = apdu.getOffsetCdata();
+                    Util.arrayCopyNonAtomic(buf, offset_cdata, ram_buf, ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_POS], lc);
+                    ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_POS] += lc;
+                }
+            }
+            else {
+       		    //receive
+        	    lc = apdu.setIncomingAndReceive();
+        	    offset_cdata = apdu.getOffsetCdata();
+        	    
+                Util.arrayCopyNonAtomic(buf, offset_cdata, ram_buf, ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_POS], lc);
+                ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_POS] += lc;
+                
+        		RSAPrivateCrtKey rsaKey2 = (RSAPrivateCrtKey) keys[currentPrivateKeyRef[0]];
+
+                rsaNoPad.init(rsaKey2, Cipher.MODE_ENCRYPT);
+                sigLen = rsaNoPad.doFinal(ram_buf, (short)0, ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_POS], ram_buf, (short)0);
+                ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_POS] =(short) 0;
+                //signature length will be mostly 256 bytes for 2048bit RSA key
+                if( sigLen != 256) {
+                  ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
+                }
+                
+                le = apdu.setOutgoing();              
+                apdu.setOutgoingLength(sigLen);
+                apdu.sendBytesLong(ram_buf, (short) 0, sigLen);
+        	 }
+        	 
+            break;    
+
+           
         case ALG_ECDSA_SHA1:
             // Get the key - it must be a EC private key,
             // checks have been done in MANAGE SECURITY ENVIRONMENT.
