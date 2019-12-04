@@ -1,4 +1,3 @@
-[submodule "ext/ant"]
-	path = ext/ant
-	url = https://github.com/martinpaljak/ant-javacard.git
-	branch = master
+[submodule "ext/sdks"]
+	path = ext/sdks
+	url = https://github.com/martinpaljak/oracle_javacard_sdks

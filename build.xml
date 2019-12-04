@@ -1,19 +1,21 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<project name="JavaCard PKI isoApplet" default="dist" basedir=".">
-  <description>Builds the project. </description>
-  <target name="dist" description="generate the distribution">
-    <tstamp/>
-    <ant dir="ext/ant"/>
-    <!-- Create the distribution directory -->
-    <taskdef name="javacard" classname="pro.javacard.ant.JavaCard" classpath="ext/ant/ant-javacard.jar"/>
-    <javacard>
-      <cap jckit="ext/ant/sdks/jc222_kit" aid="f2:76:a2:88:bc:fb:a6:9d:34:f3:10" output="IsoApplet.cap" sources="src" version="1.0">
-        <applet class="net.pwendland.javacard.pki.isoapplet.IsoApplet" aid="f2:76:a2:88:bc:fb:a6:9d:34:f3:10:01"/>
-      </cap>
-    </javacard>
-  </target>
-  <target name="clean" description="clean up">
-    <!-- Delete the built applet -->
-    <delete dir="IsoApplet.cap"/>
-  </target>
+<project name="IsoApplet" default="dist" basedir=".">
+
+    <get src="https://github.com/martinpaljak/ant-javacard/releases/latest/download/ant-javacard.jar" dest="." skipexisting="true"/>
+    <taskdef name="javacard" classname="pro.javacard.ant.JavaCard" classpath="ant-javacard.jar"/>
+
+    <description>Builds the project. </description>
+    <target name="dist" description="generate the distribution">
+        <tstamp/>
+        <javacard jckit="ext/sdks/jc305u3_kit">
+            <cap targetsdk="ext/sdks/jc222_kit" aid="f2:76:a2:88:bc:fb:a6:9d:34:f3:10" output="IsoApplet.cap" sources="src" version="1.0">
+                <applet class="net.pwendland.javacard.pki.isoapplet.IsoApplet" aid="f2:76:a2:88:bc:fb:a6:9d:34:f3:10:01"/>
+            </cap>
+        </javacard>
+    </target>
+    <target name="clean" description="clean up">
+        <!-- Delete the built applet -->
+        <delete dir="IsoApplet.cap"/>
+    </target>
+
 </project>
