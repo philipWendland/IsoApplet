@@ -4,16 +4,18 @@ The Java Card IsoApplet (e.g. for use with OpenSC).
 The Applet is capable of saving a PKCS#15 file structure and performing PKI related operations using the private key, such as signing or decrypting.
 Private keys can be generated directly on the smart card or imported from the host computer.
 The import of private keys is disabled in the default security configuration.
-The applet targets modern Smartcards with Java Card 2.2.2 or above.
+The applet targets modern Smartcards with Java Card 3.0.4 or above.
 
 **Have a look at the wiki for more information:** https://github.com/philipWendland/IsoApplet/wiki
 
 Smartcard requirements
 ======================
-* Java Card version 2.2.2 or above
+* Minimum Java Card version:
+    * 2.2.2 for legacy support [jc222 branch](https://github.com/philipWendland/IsoApplet/tree/jc222)
+    * 3.0.4 for the most recent version
 * Implementation of the "requestObjectDeletion()"-mechanism of the Java Card API is recommended to be able to properly delete files.
-* Support of javacardx.apdu.ExtendedLength if extended APDUs are to be used
 * Support of javacardx.crypto.Cipher
+* Support of javacardx.apdu.ExtendedLength if extended APDUs are to be used
 * Support of FP ECC with the corresponding field size if ECDSA is to be used
 
 Build process
