@@ -117,6 +117,8 @@ public class IsoApplet extends Applet implements ExtendedLength {
     private static final byte API_FEATURE_EXT_APDU = (byte) 0x01;
     private static final byte API_FEATURE_SECURE_RANDOM = (byte) 0x02;
     private static final byte API_FEATURE_ECC = (byte) 0x04;
+    private static final byte API_FEATURE_RSA_SHA256_PSS = (byte) 0x08;
+    private static final byte API_FEATURE_RSA_SHA512_PSS = (byte) 0x10;
 
     /* Other constants */
     // "ram_buf" is used for:
@@ -150,6 +152,8 @@ public class IsoApplet extends Applet implements ExtendedLength {
     private short[] ram_chaining_cache = null;
     private Cipher rsaPkcs1Cipher = null;
     private Signature ecdsaSignature = null;
+    private Signature rsaPss256Signature = null;
+    private Signature rsaPss512Signature = null;
     private RandomData randomData = null;
     private byte api_features;
 
@@ -194,6 +198,36 @@ public class IsoApplet extends Applet implements ExtendedLength {
                  * as this would prevent installation. */
                 ecdsaSignature = null;
                 api_features &= ~API_FEATURE_ECC;
+            } else {
+                throw e;
+            }
+        }
+
+        try {
+            rsaPss256Signature = Signature.getInstance(Signature.ALG_RSA_SHA_256_PKCS1_PSS, false);
+            api_features |= API_FEATURE_RSA_SHA256_PSS;
+        } catch (CryptoException e) {
+            if(e.getReason() == CryptoException.NO_SUCH_ALGORITHM) {
+                /* Few Java Cards do not support ECDSA at all.
+                 * We should not throw an exception in this cases
+                 * as this would prevent installation. */
+                ecdsaSignature = null;
+                api_features &= ~API_FEATURE_RSA_SHA256_PSS;
+            } else {
+                throw e;
+            }
+        }
+
+        try {
+            rsaPss256Signature = Signature.getInstance(Signature.ALG_RSA_SHA_512_PKCS1_PSS, false);
+            api_features |= API_FEATURE_RSA_SHA512_PSS;
+        } catch (CryptoException e) {
+            if(e.getReason() == CryptoException.NO_SUCH_ALGORITHM) {
+                /* Few Java Cards do not support ECDSA at all.
+                 * We should not throw an exception in this cases
+                 * as this would prevent installation. */
+                ecdsaSignature = null;
+                api_features &= ~API_FEATURE_RSA_SHA512_PSS;
             } else {
                 throw e;
             }
