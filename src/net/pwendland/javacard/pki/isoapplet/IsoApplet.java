@@ -152,8 +152,8 @@ public class IsoApplet extends Applet implements ExtendedLength {
     private short[] ram_chaining_cache = null;
     private Cipher rsaPkcs1Cipher = null;
     private Signature ecdsaSignature = null;
-    private Signature rsaPss256Signature = null;
-    private Signature rsaPss512Signature = null;
+    private Signature rsaSha256PssSignature = null;
+    private Signature rsaSha512PssSignature = null;
     private RandomData randomData = null;
     private byte api_features;
 
@@ -188,6 +188,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
 
         rsaPkcs1Cipher = Cipher.getInstance(Cipher.ALG_RSA_PKCS1, false);
 
+        // API features: probe card support for ECDSA
         try {
             ecdsaSignature = Signature.getInstance(Signature.ALG_ECDSA_SHA, false);
             api_features |= API_FEATURE_ECC;
@@ -203,36 +204,41 @@ public class IsoApplet extends Applet implements ExtendedLength {
             }
         }
 
+        /* API features: probe card support for RSA with SHA256 and PSS padding,
+         * to be used with Signature.signPreComputedHash() */
         try {
-            rsaPss256Signature = Signature.getInstance(Signature.ALG_RSA_SHA_256_PKCS1_PSS, false);
+            rsaSha256PssSignature = Signature.getInstance(Signature.ALG_RSA_SHA_256_PKCS1_PSS, false);
             api_features |= API_FEATURE_RSA_SHA256_PSS;
         } catch (CryptoException e) {
             if(e.getReason() == CryptoException.NO_SUCH_ALGORITHM) {
-                /* Few Java Cards do not support ECDSA at all.
+                /* Certain Java Cards do not support this algorithm.
                  * We should not throw an exception in this cases
                  * as this would prevent installation. */
-                ecdsaSignature = null;
+                rsaSha256PssSignature = null;
                 api_features &= ~API_FEATURE_RSA_SHA256_PSS;
             } else {
                 throw e;
             }
         }
 
+        /* API features: probe card support for RSA with SHA512 and PSS padding,
+         * to be used with Signature.signPreComputedHash() */
         try {
-            rsaPss256Signature = Signature.getInstance(Signature.ALG_RSA_SHA_512_PKCS1_PSS, false);
+            rsaSha512PssSignature = Signature.getInstance(Signature.ALG_RSA_SHA_512_PKCS1_PSS, false);
             api_features |= API_FEATURE_RSA_SHA512_PSS;
         } catch (CryptoException e) {
             if(e.getReason() == CryptoException.NO_SUCH_ALGORITHM) {
-                /* Few Java Cards do not support ECDSA at all.
+                /* Certain Java Cards do not support this algorithm.
                  * We should not throw an exception in this cases
                  * as this would prevent installation. */
-                ecdsaSignature = null;
+                rsaSha512PssSignature = null;
                 api_features &= ~API_FEATURE_RSA_SHA512_PSS;
             } else {
                 throw e;
             }
         }
 
+        // API features: probe secure random number generation support.
         try {
             randomData = RandomData.getInstance(RandomData.ALG_SECURE_RANDOM);
             api_features |= API_FEATURE_SECURE_RANDOM;
