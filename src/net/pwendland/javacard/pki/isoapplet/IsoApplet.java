@@ -96,6 +96,8 @@ public class IsoApplet extends Applet implements ExtendedLength {
 
     private static final byte ALG_GEN_RSA_2048 = (byte) 0xF3;
     private static final byte ALG_RSA_PAD_PKCS1 = (byte) 0x11;
+    private static final byte ALG_RSA_PAD_PSS_SHA256 = (byte) 0x12;
+    private static final byte ALG_RSA_PAD_PSS_SHA512 = (byte) 0x13;
 
     private static final byte ALG_GEN_EC = (byte) 0xEC;
     private static final byte ALG_ECDSA_SHA1 = (byte) 0x21;
@@ -1224,7 +1226,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
             }
 
             // Supported signature algorithms: RSA with PKCS1 padding, ECDSA with raw input.
-            if(algRef == ALG_RSA_PAD_PKCS1) {
+            if(algRef == ALG_RSA_PAD_PKCS1 || algRef == ALG_RSA_PAD_PSS_SHA256 || algRef == ALG_RSA_PAD_PSS_SHA512) {
                 // Key reference must point to a RSA private key.
                 if(keys[privKeyRef].getType() != KeyBuilder.TYPE_RSA_CRT_PRIVATE) {
                     ISOException.throwIt(ISO7816.SW_DATA_INVALID);
@@ -1383,6 +1385,8 @@ public class IsoApplet extends Applet implements ExtendedLength {
 
         switch(currentAlgorithmRef[0]) {
         case ALG_RSA_PAD_PKCS1:
+        case ALG_RSA_PAD_PSS_SHA256:
+        case ALG_RSA_PAD_PSS_SHA512:
             // Receive.
             // Bytes received must be Lc.
             lc = apdu.setIncomingAndReceive();
@@ -1394,12 +1398,28 @@ public class IsoApplet extends Applet implements ExtendedLength {
             // RSA signature operation.
             RSAPrivateCrtKey rsaKey = (RSAPrivateCrtKey) keys[currentPrivateKeyRef[0]];
 
-            if(lc > (short) 247) {
-                ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
-            }
 
-            rsaPkcs1Cipher.init(rsaKey, Cipher.MODE_ENCRYPT);
-            sigLen = rsaPkcs1Cipher.doFinal(buf, offset_cdata, lc, ram_buf, (short)0);
+            if(currentPrivateKeyRef[0] == ALG_RSA_PAD_PKCS1) {
+                if(lc > (short) 247) {
+                    ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
+                }
+                rsaPkcs1Cipher.init(rsaKey, Cipher.MODE_ENCRYPT);
+                sigLen = rsaPkcs1Cipher.doFinal(buf, offset_cdata, lc, ram_buf, (short)0);
+            } else if(currentPrivateKeyRef[0] == ALG_RSA_PAD_PSS_SHA256) {
+                if(lc != (short) 32) {
+                    ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
+                }
+                rsaSha256PssSignature.init(rsaKey, Signature.MODE_SIGN);
+                rsaSha256PssSignature.signPreComputedHash(buf, offset_cdata, lc, ram_buf, (short)0);
+            } else if(currentPrivateKeyRef[0] == ALG_RSA_PAD_PSS_SHA512) {
+                if(lc != (short) 64) {
+                    ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
+                }
+                rsaSha512PssSignature.init(rsaKey, Signature.MODE_SIGN);
+                rsaSha512PssSignature.signPreComputedHash(buf, offset_cdata, lc, ram_buf, (short)0);
+            } else {
+                ISOException.throwIt(ISO7816.SW_FUNC_NOT_SUPPORTED);
+            }
 
             if(sigLen != 256) {
                 ISOException.throwIt(ISO7816.SW_UNKNOWN);
