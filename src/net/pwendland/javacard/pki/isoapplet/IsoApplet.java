@@ -1399,19 +1399,19 @@ public class IsoApplet extends Applet implements ExtendedLength {
             RSAPrivateCrtKey rsaKey = (RSAPrivateCrtKey) keys[currentPrivateKeyRef[0]];
 
 
-            if(currentPrivateKeyRef[0] == ALG_RSA_PAD_PKCS1) {
+            if(currentAlgorithmRef[0] == ALG_RSA_PAD_PKCS1) {
                 if(lc > (short) 247) {
                     ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
                 }
                 rsaPkcs1Cipher.init(rsaKey, Cipher.MODE_ENCRYPT);
                 sigLen = rsaPkcs1Cipher.doFinal(buf, offset_cdata, lc, ram_buf, (short)0);
-            } else if(currentPrivateKeyRef[0] == ALG_RSA_PAD_PSS_SHA256) {
+            } else if(currentAlgorithmRef[0] == ALG_RSA_PAD_PSS_SHA256) {
                 if(lc != (short) 32) {
                     ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
                 }
                 rsaSha256PssSignature.init(rsaKey, Signature.MODE_SIGN);
                 rsaSha256PssSignature.signPreComputedHash(buf, offset_cdata, lc, ram_buf, (short)0);
-            } else if(currentPrivateKeyRef[0] == ALG_RSA_PAD_PSS_SHA512) {
+            } else if(currentAlgorithmRef[0] == ALG_RSA_PAD_PSS_SHA512) {
                 if(lc != (short) 64) {
                     ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
                 }
