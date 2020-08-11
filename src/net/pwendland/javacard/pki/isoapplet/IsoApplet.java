@@ -95,6 +95,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
     private static final short KEY_MAX_COUNT = 16;
 
     private static final byte ALG_GEN_RSA_2048 = (byte) 0xF3;
+    private static final byte ALG_GEN_RSA_4096 = (byte) 0xF5;
     private static final byte ALG_RSA_PAD_PKCS1 = (byte) 0x11;
     private static final byte ALG_RSA_PAD_PSS_SHA256 = (byte) 0x12;
     private static final byte ALG_RSA_PAD_PSS_SHA512 = (byte) 0x13;
@@ -121,6 +122,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
     private static final byte API_FEATURE_ECC = (byte) 0x04;
     private static final byte API_FEATURE_RSA_SHA256_PSS = (byte) 0x08;
     private static final byte API_FEATURE_RSA_SHA512_PSS = (byte) 0x10;
+    private static final byte API_FEATURE_RSA_4096 = (byte) 0x20;
 
     /* Other constants */
     // "ram_buf" is used for:
@@ -206,6 +208,18 @@ public class IsoApplet extends Applet implements ExtendedLength {
             }
         }
 
+        // API features: probe card support for 4096 bit RSA keys
+        try {
+            RSAPrivateCrtKey testKey = (RSAPrivateCrtKey)KeyBuilder.buildKey(KeyBuilder.ALG_TYPE_RSA_CRT_PRIVATE, KeyBuilder.LENGTH_RSA_4096, false);
+            api_features |= API_FEATURE_RSA_4096;
+        } catch (CryptoException e) {
+            if(e.getReason() == CryptoException.NO_SUCH_ALGORITHM) {
+                api_features &= ~API_FEATURE_RSA_4096;
+            } else {
+                throw e;
+            }
+        }
+
         /* API features: probe card support for RSA with SHA256 and PSS padding,
          * to be used with Signature.signPreComputedHash() */
         try {
@@ -255,6 +269,10 @@ public class IsoApplet extends Applet implements ExtendedLength {
 
         if(DEF_EXT_APDU) {
             api_features |= API_FEATURE_EXT_APDU;
+        }
+
+        if(JCSystem.isObjectDeletionSupported()) {
+            JCSystem.requestObjectDeletion();
         }
 
         state = STATE_CREATION;
@@ -425,7 +443,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
      * \brief Process the GET DATA apdu (INS = CA)
      *
      * This APDU can be used to request the following data:
-     *   P1P2 = 0x1001: Applet version and features
+     *   P1P2 = 0x0101: Applet version and features
      *
      * \param apdu The apdu to process.
      */
@@ -1202,7 +1220,8 @@ public class IsoApplet extends Applet implements ExtendedLength {
              *******************/
 
             if(algRef != ALG_GEN_EC
-                    && algRef != ALG_GEN_RSA_2048) {
+                    && algRef != ALG_GEN_RSA_2048
+                    && algRef != ALG_GEN_RSA_4096) {
                 ISOException.throwIt(ISO7816.SW_FUNC_NOT_SUPPORTED);
             }
             // Check: We need a private key reference.
@@ -1397,7 +1416,6 @@ public class IsoApplet extends Applet implements ExtendedLength {
 
             // RSA signature operation.
             RSAPrivateCrtKey rsaKey = (RSAPrivateCrtKey) keys[currentPrivateKeyRef[0]];
-
 
             if(currentAlgorithmRef[0] == ALG_RSA_PAD_PKCS1) {
                 if(lc > (short) 247) {
