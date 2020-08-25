@@ -17,7 +17,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA
  */
 
-package net.pwendland.javacard.pki.isoapplet;
+package xyz.wendland.javacard.pki.isoapplet;
 
 /**
  * \brief The abstract class ElementaryFile.

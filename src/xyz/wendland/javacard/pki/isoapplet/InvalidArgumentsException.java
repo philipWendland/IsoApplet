@@ -17,34 +17,31 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA
  */
 
-package net.pwendland.javacard.pki.isoapplet;
+package xyz.wendland.javacard.pki.isoapplet;
 
 /**
- * \brief The NotFoundException class.
- *
- * Should be thrown whenever a specified file or tag in a TLV structure
- * could not be found. This class is a singleton in order to save resources.
+ * \brief The InvalidArgumentsException class.
  *
  * \attention This singleton is not thread-safe.
  */
-public class NotFoundException extends Exception {
-    public static NotFoundException instance;
+public class InvalidArgumentsException extends Exception {
+    public static InvalidArgumentsException instance;
 
     /**
      * \brief Private access constructor (Singleton pattern).
      */
-    private NotFoundException() {
+    private InvalidArgumentsException() {
 
     }
 
     /**
      * \brief Get the instance.
      *
-     * \return The NotFoundException instance.
+     * \return The InvalidArgumentsException instance.
      */
-    public static NotFoundException getInstance() {
+    public static InvalidArgumentsException getInstance() {
         if(instance == null) {
-            instance = new NotFoundException();
+            instance = new InvalidArgumentsException();
         }
         return instance;
     }
