@@ -17,9 +17,9 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA
  */
 
-package net.pwendland.javacard.pki.isoapplet;
+package xyz.wendland.javacard.pki.isoapplet;
 
-import net.pwendland.javacard.pki.isoapplet.UtilTLV;
+import xyz.wendland.javacard.pki.isoapplet.UtilTLV;
 
 /**
  * \brief The File class acting as superclass for any file.

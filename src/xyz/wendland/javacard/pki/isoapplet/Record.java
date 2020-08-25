@@ -17,33 +17,34 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA
  */
 
-package net.pwendland.javacard.pki.isoapplet;
+package xyz.wendland.javacard.pki.isoapplet;
 
 /**
- * \brief The InvalidArgumentsException class.
+ * \brief A Record.
  *
- * \attention This singleton is not thread-safe.
+ * This class is necessary because multidimensional arrays are not supported by the JCVM.
  */
-public class InvalidArgumentsException extends Exception {
-    public static InvalidArgumentsException instance;
+public class Record {
+    byte[] data;
 
     /**
-     * \brief Private access constructor (Singleton pattern).
-     */
-    private InvalidArgumentsException() {
-
-    }
-
-    /**
-     * \brief Get the instance.
+     * \brief Constructor.
      *
-     * \return The InvalidArgumentsException instance.
+     * \param data The byte array to store. No copy is made.
      */
-    public static InvalidArgumentsException getInstance() {
-        if(instance == null) {
-            instance = new InvalidArgumentsException();
-        }
-        return instance;
+    Record(byte[] data) {
+        this.data = data;
     }
 
+    /**
+     * \brief Constructor.
+     *
+     * A new byte array is being allocated. Use the data-field to fill it up with data.
+     *
+     * \param size The size of the data array.
+     */
+    Record(short size) {
+        this.data = new byte[size];
+    }
 }
+
