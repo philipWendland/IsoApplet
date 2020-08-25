@@ -58,7 +58,6 @@ public class IsoApplet extends Applet implements ExtendedLength {
     public static final byte API_VERSION_MINOR = (byte) 0x06;
 
     /* Card-specific configuration */
-    public static final boolean DEF_EXT_APDU = false;
     public static final boolean DEF_PRIVATE_KEY_IMPORT_ALLOWED = false;
 
     /* ISO constants not in the "ISO7816" interface */
@@ -74,7 +73,6 @@ public class IsoApplet extends Applet implements ExtendedLength {
     public static final byte INS_RESET_RETRY_COUNTER = (byte) 0x2C;
     public static final byte INS_MANAGE_SECURITY_ENVIRONMENT = (byte) 0x22;
     public static final byte INS_PERFORM_SECURITY_OPERATION = (byte) 0x2A;
-    public static final byte INS_GET_RESPONSE = (byte) 0xC0;
     public static final byte INS_PUT_DATA = (byte) 0xDB;
     public static final byte INS_GET_CHALLENGE = (byte) 0x84;
     public static final byte INS_GET_DATA = (byte) 0xCA;
@@ -117,32 +115,11 @@ public class IsoApplet extends Applet implements ExtendedLength {
     private static final byte STATE_OPERATIONAL_DEACTIVATED = (byte) 0x04; // Applet usage is deactivated. (Unused at the moment.)
     private static final byte STATE_TERMINATED = (byte) 0x0C; // Applet usage is terminated. (Unused at the moment.)
 
-    private static final byte API_FEATURE_EXT_APDU = (byte) 0x01;
     private static final byte API_FEATURE_SECURE_RANDOM = (byte) 0x02;
     private static final byte API_FEATURE_ECC = (byte) 0x04;
     private static final byte API_FEATURE_RSA_SHA256_PSS = (byte) 0x08;
     private static final byte API_FEATURE_RSA_SHA512_PSS = (byte) 0x10;
     private static final byte API_FEATURE_RSA_4096 = (byte) 0x20;
-
-    /* Other constants */
-    // "ram_buf" is used for:
-    //	* GET RESPONSE (caching for response APDUs):
-    //		- GENERATE ASYMMETRIC KEYPAIR: RSA 2048 bit and ECC >= 256 bit public key information.
-    //	* Command Chaining or extended APDUs (caching of command APDU data):
-    //		- DECIPHER (RSA 2048 bit).
-    //		- GENERATE ASYMMETRIC KEYPAIR: ECC curve parameters if large (> 256 bit) prime fields are used.
-    //		- PUT DATA: RSA and ECC private key import.
-    private static final short RAM_BUF_SIZE = (short) 660;
-    // "ram_chaining_cache" is used for:
-    //		- Caching of the amount of bytes remainung.
-    //		- Caching of the current send position.
-    //		- Determining how many operations had previously been performed in the chain (re-use CURRENT_POS)
-    //		- Caching of the current INS (Only one chain at a time, for one specific instruction).
-    private static final short RAM_CHAINING_CACHE_SIZE = (short) 4;
-    private static final short RAM_CHAINING_CACHE_OFFSET_BYTES_REMAINING = (short) 0;
-    private static final short RAM_CHAINING_CACHE_OFFSET_CURRENT_POS = (short) 1;
-    private static final short RAM_CHAINING_CACHE_OFFSET_CURRENT_INS = (short) 2;
-    private static final short RAM_CHAINING_CACHE_OFFSET_CURRENT_P1P2 = (short) 3;
 
     /* Member variables: */
     private byte state;
@@ -152,8 +129,6 @@ public class IsoApplet extends Applet implements ExtendedLength {
     private byte[] currentAlgorithmRef = null;
     private short[] currentPrivateKeyRef = null;
     private Key[] keys = null;
-    private byte[] ram_buf = null;
-    private short[] ram_chaining_cache = null;
     private Cipher rsaPkcs1Cipher = null;
     private Signature ecdsaSignature = null;
     private Signature rsaSha256PssSignature = null;
@@ -183,8 +158,6 @@ public class IsoApplet extends Applet implements ExtendedLength {
         api_features = 0;
         pin = new OwnerPIN(PIN_MAX_TRIES, PIN_MAX_LENGTH);
         fs = new IsoFileSystem();
-        ram_buf = JCSystem.makeTransientByteArray(RAM_BUF_SIZE, JCSystem.CLEAR_ON_DESELECT);
-        ram_chaining_cache = JCSystem.makeTransientShortArray(RAM_CHAINING_CACHE_SIZE, JCSystem.CLEAR_ON_DESELECT);
 
         currentAlgorithmRef = JCSystem.makeTransientByteArray((short)1, JCSystem.CLEAR_ON_DESELECT);
         currentPrivateKeyRef = JCSystem.makeTransientShortArray((short)1, JCSystem.CLEAR_ON_DESELECT);
@@ -267,10 +240,6 @@ public class IsoApplet extends Applet implements ExtendedLength {
             }
         }
 
-        if(DEF_EXT_APDU) {
-            api_features |= API_FEATURE_EXT_APDU;
-        }
-
         if(JCSystem.isObjectDeletionSupported()) {
             JCSystem.requestObjectDeletion();
         }
@@ -324,47 +293,8 @@ public class IsoApplet extends Applet implements ExtendedLength {
         if(apdu.isSecureMessagingCLA()) {
             ISOException.throwIt(ISO7816.SW_SECURE_MESSAGING_NOT_SUPPORTED);
         }
-
-        // Command chaining checks
-        if(ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_INS] != 0 || isCommandChainingCLA(apdu)) {
-            short p1p2 = Util.getShort(buffer, ISO7816.OFFSET_P1);
-            /*
-             * Command chaining only for:
-             * 	- PERFORM SECURITY OPERATION
-             * 	- GENERATE ASYMMETRIC KEYKAIR
-             * 	- PUT DATA
-             * when not using extended APDUs.
-             */
-            if( DEF_EXT_APDU ||
-                    (ins != INS_PERFORM_SECURITY_OPERATION
-                     && ins != INS_GENERATE_ASYMMETRIC_KEYPAIR
-                     && ins != INS_PUT_DATA)) {
-                ISOException.throwIt(ISO7816.SW_COMMAND_CHAINING_NOT_SUPPORTED);
-            }
-
-            if(ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_INS] == 0
-                    && ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_P1P2] == 0) {
-                /* A new chain is starting - set the current INS and P1P2. */
-                if(ins == 0) {
-                    ISOException.throwIt(ISO7816.SW_INS_NOT_SUPPORTED);
-                }
-                ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_INS] = ins;
-                ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_P1P2] = p1p2;
-            } else if(ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_INS] != ins
-                      || ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_P1P2] != p1p2) {
-                /* The current chain is not yet completed,
-                 * but an apdu not part of the chain had been received. */
-                ISOException.throwIt(SW_COMMAND_NOT_ALLOWED_GENERAL);
-            } else if(!isCommandChainingCLA(apdu)) {
-                /* A chain is ending, set the current INS and P1P2 to zero to indicate that. */
-                ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_INS] = 0;
-                ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_P1P2] = 0;
-            }
-        }
-
-        // If the card expects a GET RESPONSE, no other operation should be requested.
-        if(ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_BYTES_REMAINING] > 0 && ins != INS_GET_RESPONSE) {
-            ISOException.throwIt(SW_COMMAND_NOT_ALLOWED_GENERAL);
+        if(isCommandChainingCLA(apdu)) {
+            ISOException.throwIt(ISO7816.SW_COMMAND_CHAINING_NOT_SUPPORTED);
         }
 
         if(apdu.isISOInterindustryCLA()) {
@@ -404,9 +334,6 @@ public class IsoApplet extends Applet implements ExtendedLength {
                 break;
             case INS_RESET_RETRY_COUNTER:
                 processResetRetryCounter(apdu);
-                break;
-            case INS_GET_RESPONSE:
-                processGetResponse(apdu);
                 break;
             case INS_PUT_DATA:
                 processPutData(apdu);
@@ -457,18 +384,11 @@ public class IsoApplet extends Applet implements ExtendedLength {
             ISOException.throwIt(ISO7816.SW_INS_NOT_SUPPORTED);
         }
 
-        if(p1 == (byte) 0x01) {
-            switch(p2) {
-            case (byte) 0x01:
-                buf[0] = API_VERSION_MAJOR;
-                buf[1] = API_VERSION_MINOR;
-                buf[2] = api_features;
-                apdu.setOutgoingAndSend((short) 0, (short) 3);
-                break;
-
-            default:
-                ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
-            }
+        if(p1 == (byte) 0x01 && p2 == (byte) 0x01) {
+            buf[0] = API_VERSION_MAJOR;
+            buf[1] = API_VERSION_MINOR;
+            buf[2] = api_features;
+            apdu.setOutgoingAndSend((short) 0, (short) 3);
         } else {
             ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
         }
@@ -832,12 +752,13 @@ public class IsoApplet extends Applet implements ExtendedLength {
             if((p1 != (byte) 0x00) || p2 != (byte) 0x00) {
                 ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
             }
-            lc = doChainingOrExtAPDU(apdu);
+            short recvLen = apdu.setIncomingAndReceive();
+            short offset = apdu.getOffsetCdata();
 
             /* Search for prime */
             short pos = 0;
             try {
-                pos = UtilTLV.findTag(ram_buf, (short) 0, lc, (byte) 0x81);
+                pos = UtilTLV.findTag(buf, offset, recvLen, (byte) 0x81);
             } catch (NotFoundException e) {
                 ISOException.throwIt(ISO7816.SW_DATA_INVALID);
             } catch (InvalidArgumentsException e) {
@@ -846,7 +767,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
             pos++;
             short len = 0;
             try {
-                len = UtilTLV.decodeLengthField(ram_buf, pos);
+                len = UtilTLV.decodeLengthField(buf, pos);
             } catch (InvalidArgumentsException e) {
                 ISOException.throwIt(ISO7816.SW_DATA_INVALID);
             }
@@ -864,9 +785,10 @@ public class IsoApplet extends Applet implements ExtendedLength {
                 }
                 ISOException.throwIt(ISO7816.SW_UNKNOWN);
             }
+
             try {
-                initEcParams(ram_buf, (short) 0, lc, pubKey);
-                initEcParams(ram_buf, (short) 0, lc, privKey);
+                initEcParams(buf, offset, recvLen, pubKey);
+                initEcParams(buf, offset, recvLen, privKey);
             } catch (NotFoundException e) {
                 // Parts of the data needed to initialize the EC keys were missing.
                 ISOException.throwIt(ISO7816.SW_DATA_INVALID);
@@ -889,8 +811,6 @@ public class IsoApplet extends Applet implements ExtendedLength {
                 JCSystem.requestObjectDeletion();
             }
 
-            Util.arrayFillNonAtomic(ram_buf, (short)0, RAM_BUF_SIZE, (byte)0x00);
-            ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_POS] = 0;
             // Return pubkey. See ISO7816-8 table 3.
             try {
                 sendECPublicKey(apdu, pubKey);
@@ -918,104 +838,25 @@ public class IsoApplet extends Applet implements ExtendedLength {
      * 			Can be null for the secound part if there is no support for extended apdus.
      */
     private void sendRSAPublicKey(APDU apdu, RSAPublicKey key) {
-        short le = apdu.setOutgoing();
+        byte[] buf = apdu.getBuffer();
         short pos = 0;
 
-        ram_buf[pos++] = (byte) 0x7F; // Interindustry template for nesting one set of public key data objects.
-        ram_buf[pos++] = (byte) 0x49; // "
-        ram_buf[pos++] = (byte) 0x82; // Length field: 3 Bytes.
-        ram_buf[pos++] = (byte) 0x01; // Length : 265 Bytes.
-        ram_buf[pos++] = (byte) 0x09; // "
+        buf[pos++] = (byte) 0x7F; // Interindustry template for nesting one set of public key data objects.
+        buf[pos++] = (byte) 0x49; // "
+        buf[pos++] = (byte) 0x82; // Length field: 3 Bytes.
+        buf[pos++] = (byte) 0x01; // Length : 265 Bytes.
+        buf[pos++] = (byte) 0x09; // "
 
-        ram_buf[pos++] = (byte) 0x81; // RSA public key modulus tag.
-        ram_buf[pos++] = (byte) 0x82; // Length field: 3 Bytes.
-        ram_buf[pos++] = (byte) 0x01; // Length: 256 bytes.
-        ram_buf[pos++] = (byte) 0x00; // "
-        pos += key.getModulus(ram_buf, pos);
-        ram_buf[pos++] = (byte) 0x82; // RSA public key exponent tag.
-        ram_buf[pos++] = (byte) 0x03; // Length: 3 Bytes.
-        pos += key.getExponent(ram_buf, pos);
+        buf[pos++] = (byte) 0x81; // RSA public key modulus tag.
+        buf[pos++] = (byte) 0x82; // Length field: 3 Bytes.
+        buf[pos++] = (byte) 0x01; // Length: 256 bytes.
+        buf[pos++] = (byte) 0x00; // "
+        pos += key.getModulus(buf, pos);
+        buf[pos++] = (byte) 0x82; // RSA public key exponent tag.
+        buf[pos++] = (byte) 0x03; // Length: 3 Bytes.
+        pos += key.getExponent(buf, pos);
 
-        sendLargeData(apdu, (short)0, pos);
-    }
-
-
-    /**
-     * \brief Process the GET RESPONSE APDU (INS=C0).
-     *
-     * If there is content available in ram_buf that could not be sent in the last operation,
-     * the host should use this APDU to get the data. The data is cached in ram_buf.
-     *
-     * \param apdu The GET RESPONSE apdu.
-     *
-     * \throw ISOException SW_CONDITIONS_NOT_SATISFIED, SW_UNKNOWN, SW_CORRECT_LENGTH.
-     */
-    private void processGetResponse(APDU apdu) {
-        byte[] buf = apdu.getBuffer();
-        short le = apdu.setOutgoing();
-
-        if( ! pin.isValidated() ) {
-            ISOException.throwIt(ISO7816.SW_SECURITY_STATUS_NOT_SATISFIED);
-        }
-
-        if(ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_BYTES_REMAINING] <= (short) 0) {
-            ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
-        }
-
-        short expectedLe = ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_BYTES_REMAINING] > 256 ?
-                           256 : ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_BYTES_REMAINING];
-        if(le != expectedLe) {
-            ISOException.throwIt( (short)(ISO7816.SW_CORRECT_LENGTH_00 | expectedLe) );
-        }
-
-        sendLargeData(apdu, ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_POS],
-                      ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_BYTES_REMAINING]);
-    }
-
-    /**
-     * \brief Send the data from ram_buf, using either extended APDUs or GET RESPONSE.
-     *
-     * \param apdu The APDU object, in STATE_OUTGOING state.
-     *
-     * \param pos The position in ram_buf at where the data begins
-     *
-     * \param len The length of the data to be sent. If zero, 9000 will be
-     *            returned
-     */
-    private void sendLargeData(APDU apdu, short pos, short len) {
-        if(len <= 0) {
-            ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_BYTES_REMAINING] = 0;
-            ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_POS] = 0;
-            ISOException.throwIt(ISO7816.SW_NO_ERROR);
-        }
-
-        if((short)(pos + len) > RAM_BUF_SIZE) {
-            ISOException.throwIt(ISO7816.SW_UNKNOWN);
-        }
-
-        if(DEF_EXT_APDU) {
-            apdu.setOutgoingLength(len);
-            apdu.sendBytesLong(ram_buf, pos, len);
-        } else {
-            // We have 256 Bytes send-capacity per APDU.
-            // Send directly from ram_buf, then prepare for chaining.
-            short sendLen = len > 256 ? 256 : len;
-            apdu.setOutgoingLength(sendLen);
-            apdu.sendBytesLong(ram_buf, pos, sendLen);
-            short bytesLeft = (short)(len - sendLen);
-            if(bytesLeft > 0) {
-                ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_BYTES_REMAINING] = bytesLeft;
-                ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_POS] = (short)(pos + sendLen);
-                short getRespLen = bytesLeft > 256 ? 256 : bytesLeft;
-                ISOException.throwIt( (short)(ISO7816.SW_BYTES_REMAINING_00 | getRespLen) );
-                // The next part of the data is now in ram_buf, metadata is in ram_chaining_cache.
-                // It can be fetched by the host via GET RESPONSE.
-            } else {
-                ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_BYTES_REMAINING] = 0;
-                ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_POS] = 0;
-                ISOException.throwIt(ISO7816.SW_NO_ERROR);
-            }
-        }
+        apdu.setOutgoingAndSend((short)0, pos);
     }
 
     /**
@@ -1028,28 +869,29 @@ public class IsoApplet extends Applet implements ExtendedLength {
      *
      * \throw InvalidArgumentsException Field length of the EC key provided can not be handled.
      *
-     * \throw NotEnoughSpaceException ram_buf is too small to contain the EC key to send.
+     * \throw NotEnoughSpaceException apdu buf is too small to contain the EC key to send.
      */
     private void sendECPublicKey(APDU apdu, ECPublicKey key) throws InvalidArgumentsException, NotEnoughSpaceException {
         short pos = 0;
         final short field_bytes = (key.getSize()%8 == 0) ? (short)(key.getSize()/8) : (short)(key.getSize()/8+1);
         short len, r;
+        byte[] buf = apdu.getBuffer();
 
         // Return pubkey. See ISO7816-8 table 3.
         len = (short)(7 // We have: 7 tags,
                       + (key.getSize() >= LENGTH_EC_FP_512 ? 9 : 7) // 7 length fields, of which 2 are 2 byte fields when using 521 bit curves,
                       + 8 * field_bytes + 4); // 4 * field_len + 2 * 2 field_len + cofactor (2 bytes) + 2 * uncompressed tag
-        pos += UtilTLV.writeTagAndLen((short)0x7F49, len, ram_buf, pos);
+        pos += UtilTLV.writeTagAndLen((short)0x7F49, len, buf, pos);
 
         // Prime - "P"
         len = field_bytes;
-        pos += UtilTLV.writeTagAndLen((short)0x81, len, ram_buf, pos);
-        r = key.getField(ram_buf, pos);
+        pos += UtilTLV.writeTagAndLen((short)0x81, len, buf, pos);
+        r = key.getField(buf, pos);
         if(r < len) {
             // If the parameter has fewer bytes than the field length, we fill
             // the MSB's with zeroes.
-            Util.arrayCopyNonAtomic(ram_buf, pos, ram_buf, (short)(pos+len-r), (short)(len-r));
-            Util.arrayFillNonAtomic(ram_buf, pos, r, (byte)0x00);
+            Util.arrayCopyNonAtomic(buf, pos, buf, (short)(pos+len-r), (short)(len-r));
+            Util.arrayFillNonAtomic(buf, pos, r, (byte)0x00);
         } else if (r > len) {
             throw InvalidArgumentsException.getInstance();
         }
@@ -1057,11 +899,11 @@ public class IsoApplet extends Applet implements ExtendedLength {
 
         // First coefficient - "A"
         len = field_bytes;
-        pos += UtilTLV.writeTagAndLen((short)0x82, len, ram_buf, pos);
-        r = key.getA(ram_buf, pos);
+        pos += UtilTLV.writeTagAndLen((short)0x82, len, buf, pos);
+        r = key.getA(buf, pos);
         if(r < len) {
-            Util.arrayCopyNonAtomic(ram_buf, pos, ram_buf, (short)(pos+len-r), (short)(len-r));
-            Util.arrayFillNonAtomic(ram_buf, pos, r, (byte)0x00);
+            Util.arrayCopyNonAtomic(buf, pos, buf, (short)(pos+len-r), (short)(len-r));
+            Util.arrayFillNonAtomic(buf, pos, r, (byte)0x00);
         } else if (r > len) {
             throw InvalidArgumentsException.getInstance();
         }
@@ -1069,11 +911,11 @@ public class IsoApplet extends Applet implements ExtendedLength {
 
         // Second coefficient - "B"
         len = field_bytes;
-        pos += UtilTLV.writeTagAndLen((short)0x83, len, ram_buf, pos);
-        r = key.getB(ram_buf, pos);
+        pos += UtilTLV.writeTagAndLen((short)0x83, len, buf, pos);
+        r = key.getB(buf, pos);
         if(r < len) {
-            Util.arrayCopyNonAtomic(ram_buf, pos, ram_buf, (short)(pos+len-r), (short)(len-r));
-            Util.arrayFillNonAtomic(ram_buf, pos, r, (byte)0x00);
+            Util.arrayCopyNonAtomic(buf, pos, buf, (short)(pos+len-r), (short)(len-r));
+            Util.arrayFillNonAtomic(buf, pos, r, (byte)0x00);
         } else if (r > len) {
             throw InvalidArgumentsException.getInstance();
         }
@@ -1081,11 +923,11 @@ public class IsoApplet extends Applet implements ExtendedLength {
 
         // Generator - "PB"
         len = (short)(1 + 2 * field_bytes);
-        pos += UtilTLV.writeTagAndLen((short)0x84, len, ram_buf, pos);
-        r = key.getG(ram_buf, pos);
+        pos += UtilTLV.writeTagAndLen((short)0x84, len, buf, pos);
+        r = key.getG(buf, pos);
         if(r < len) {
-            Util.arrayCopyNonAtomic(ram_buf, pos, ram_buf, (short)(pos+len-r), (short)(len-r));
-            Util.arrayFillNonAtomic(ram_buf, pos, r, (byte)0x00);
+            Util.arrayCopyNonAtomic(buf, pos, buf, (short)(pos+len-r), (short)(len-r));
+            Util.arrayFillNonAtomic(buf, pos, r, (byte)0x00);
         } else if (r > len) {
             throw InvalidArgumentsException.getInstance();
         }
@@ -1093,11 +935,11 @@ public class IsoApplet extends Applet implements ExtendedLength {
 
         // Order - "Q"
         len = field_bytes;
-        pos += UtilTLV.writeTagAndLen((short)0x85, len, ram_buf, pos);
-        r = key.getR(ram_buf, pos);
+        pos += UtilTLV.writeTagAndLen((short)0x85, len, buf, pos);
+        r = key.getR(buf, pos);
         if(r < len) {
-            Util.arrayCopyNonAtomic(ram_buf, pos, ram_buf, (short)(pos+len-r), (short)(len-r));
-            Util.arrayFillNonAtomic(ram_buf, pos, r, (byte)0x00);
+            Util.arrayCopyNonAtomic(buf, pos, buf, (short)(pos+len-r), (short)(len-r));
+            Util.arrayFillNonAtomic(buf, pos, r, (byte)0x00);
         } else if (r > len) {
             throw InvalidArgumentsException.getInstance();
         }
@@ -1105,11 +947,11 @@ public class IsoApplet extends Applet implements ExtendedLength {
 
         // Public key - "PP"
         len = (short)(1 + 2 * field_bytes);
-        pos += UtilTLV.writeTagAndLen((short)0x86, len, ram_buf, pos);
-        r = key.getW(ram_buf, pos);
+        pos += UtilTLV.writeTagAndLen((short)0x86, len, buf, pos);
+        r = key.getW(buf, pos);
         if(r < len) {
-            Util.arrayCopyNonAtomic(ram_buf, pos, ram_buf, (short)(pos+len-r), (short)(len-r));
-            Util.arrayFillNonAtomic(ram_buf, pos, r, (byte)0x00);
+            Util.arrayCopyNonAtomic(buf, pos, buf, (short)(pos+len-r), (short)(len-r));
+            Util.arrayFillNonAtomic(buf, pos, r, (byte)0x00);
         } else if (r > len) {
             throw InvalidArgumentsException.getInstance();
         }
@@ -1117,13 +959,12 @@ public class IsoApplet extends Applet implements ExtendedLength {
 
         // Cofactor
         len = 2;
-        pos += UtilTLV.writeTagAndLen((short)0x87, len, ram_buf, pos);
-        Util.setShort(ram_buf, pos, key.getK());
+        pos += UtilTLV.writeTagAndLen((short)0x87, len, buf, pos);
+        Util.setShort(buf, pos, key.getK());
         pos += 2;
 
-        // ram_buf now contains the complete public key.
-        apdu.setOutgoing();
-        sendLargeData(apdu, (short)0, pos);
+        // buf now contains the complete public key.
+        apdu.setOutgoingAndSend((short)0, pos);
     }
 
     /**
@@ -1339,15 +1180,12 @@ public class IsoApplet extends Applet implements ExtendedLength {
      *						SW_WRONG_DATA
      */
     private void decipher(APDU apdu) {
-        short offset_cdata;
-        short lc;
-        short decLen = -1;
-
-        lc = doChainingOrExtAPDU(apdu);
-        offset_cdata = 0;
+        short lc = apdu.setIncomingAndReceive();
+        short offset_cdata = apdu.getOffsetCdata();
+        byte[] buf = apdu.getBuffer();
 
         // Padding indicator should be "No further indication".
-        if(ram_buf[offset_cdata] != (byte) 0x00) {
+        if(buf[offset_cdata] != (byte) 0x00) {
             ISOException.throwIt(ISO7816.SW_WRONG_DATA);
         }
 
@@ -1366,8 +1204,10 @@ public class IsoApplet extends Applet implements ExtendedLength {
             }
 
             rsaPkcs1Cipher.init(theKey, Cipher.MODE_DECRYPT);
+            short decLen = -1;
             try {
-                decLen = rsaPkcs1Cipher.doFinal(ram_buf, (short)(offset_cdata+1), (short)(lc-1),
+                //TODO can these boundaries overlap?
+                decLen = rsaPkcs1Cipher.doFinal(buf, (short)(offset_cdata+1), (short)(lc-1),
                                                 apdu.getBuffer(), (short) 0);
             } catch(CryptoException e) {
                 ISOException.throwIt(ISO7816.SW_WRONG_DATA);
@@ -1422,19 +1262,22 @@ public class IsoApplet extends Applet implements ExtendedLength {
                     ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
                 }
                 rsaPkcs1Cipher.init(rsaKey, Cipher.MODE_ENCRYPT);
-                sigLen = rsaPkcs1Cipher.doFinal(buf, offset_cdata, lc, ram_buf, (short)0);
+                //TODO buffer should not overlap!
+                sigLen = rsaPkcs1Cipher.doFinal(buf, offset_cdata, lc, buf, (short)0);
             } else if(currentAlgorithmRef[0] == ALG_RSA_PAD_PSS_SHA256) {
                 if(lc != (short) 32) {
                     ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
                 }
                 rsaSha256PssSignature.init(rsaKey, Signature.MODE_SIGN);
-                rsaSha256PssSignature.signPreComputedHash(buf, offset_cdata, lc, ram_buf, (short)0);
+                //TODO buffer should not overlap!
+                rsaSha256PssSignature.signPreComputedHash(buf, offset_cdata, lc, buf, (short)0);
             } else if(currentAlgorithmRef[0] == ALG_RSA_PAD_PSS_SHA512) {
                 if(lc != (short) 64) {
                     ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
                 }
                 rsaSha512PssSignature.init(rsaKey, Signature.MODE_SIGN);
-                rsaSha512PssSignature.signPreComputedHash(buf, offset_cdata, lc, ram_buf, (short)0);
+                //TODO buffer should not overlap!
+                rsaSha512PssSignature.signPreComputedHash(buf, offset_cdata, lc, buf, (short)0);
             } else {
                 ISOException.throwIt(ISO7816.SW_FUNC_NOT_SUPPORTED);
             }
@@ -1449,7 +1292,8 @@ public class IsoApplet extends Applet implements ExtendedLength {
                 ISOException.throwIt(ISO7816.SW_CORRECT_LENGTH_00);
             }
             apdu.setOutgoingLength(sigLen);
-            apdu.sendBytesLong(ram_buf, (short) 0, sigLen);
+            //TODO check from where to send
+            apdu.sendBytesLong(buf, (short) 0, sigLen);
             break;
 
         case ALG_ECDSA_SHA1:
@@ -1457,15 +1301,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
             // checks have been done in MANAGE SECURITY ENVIRONMENT.
             ECPrivateKey ecKey = (ECPrivateKey) keys[currentPrivateKeyRef[0]];
 
-            // Initialisation should be done when:
-            // 	- No command chaining is performed at all.
-            //	- Command chaining is performed and this is the first apdu in the chain.
-            if(ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_POS] == (short) 0) {
-                ecdsaSignature.init(ecKey, Signature.MODE_SIGN);
-                if(isCommandChainingCLA(apdu)) {
-                    ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_POS] = (short) 1;
-                }
-            }
+            ecdsaSignature.init(ecKey, Signature.MODE_SIGN);
 
             short recvLen = apdu.setIncomingAndReceive();
             offset_cdata = apdu.getOffsetCdata();
@@ -1478,13 +1314,8 @@ public class IsoApplet extends Applet implements ExtendedLength {
                 recvLen = apdu.receiveBytes(offset_cdata);
             }
 
-            if(!isCommandChainingCLA(apdu)) {
-                sigLen = ecdsaSignature.sign(buf, (short)0, (short)0, buf, (short) 0);
-                ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_POS] = (short) 0;
-                apdu.setOutgoingAndSend((short) 0, sigLen);
-            } else {
-                ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_POS]++;
-            }
+            sigLen = ecdsaSignature.sign(buf, (short)0, (short)0, buf, (short) 0);
+            apdu.setOutgoingAndSend((short) 0, sigLen);
 
             break;
 
@@ -1535,8 +1366,9 @@ public class IsoApplet extends Applet implements ExtendedLength {
      * \throw ISOException SW_SECURITY_STATUS_NOT_SATISFIED, SW_DATA_INVALID, SW_WRONG_LENGTH.
      */
     private void importPrivateKey(APDU apdu) throws ISOException {
-        short recvLen;
-        short offset = 0;
+        byte[] buf = apdu.getBuffer();
+        short recvLen = apdu.setIncomingAndReceive();
+        short offset = apdu.getOffsetCdata();
         short len = 0;
 
         if( ! pin.isValidated() ) {
@@ -1547,16 +1379,13 @@ public class IsoApplet extends Applet implements ExtendedLength {
         case ALG_GEN_RSA_2048:
             // RSA key import.
 
-            // This ensures that all the data is located in ram_buf, beginning at zero.
-            recvLen = doChainingOrExtAPDU(apdu);
-
             // Parse the outer tag.
-            if(ram_buf[offset] != (byte)0x7F || ram_buf[(short)(offset+1)] != (byte)0x48) {
+            if(buf[offset] != (byte)0x7F || buf[(short)(offset+1)] != (byte)0x48) {
                 ISOException.throwIt(ISO7816.SW_WRONG_DATA);
             }
             offset += 2;
             try {
-                len = UtilTLV.decodeLengthField(ram_buf, offset);
+                len = UtilTLV.decodeLengthField(buf, offset);
                 offset += UtilTLV.getLengthFieldLength(len);
             } catch (InvalidArgumentsException e) {
                 ISOException.throwIt(ISO7816.SW_DATA_INVALID);
@@ -1564,12 +1393,12 @@ public class IsoApplet extends Applet implements ExtendedLength {
             if(len != (short)(recvLen - offset)) {
                 ISOException.throwIt(ISO7816.SW_DATA_INVALID);
             }
-            if( ! UtilTLV.isTLVconsistent(ram_buf, offset, len) )	{
+            if( ! UtilTLV.isTLVconsistent(buf, offset, len) )	{
                 ISOException.throwIt(ISO7816.SW_DATA_INVALID);
             }
             // Import the key from the value field of the outer tag.
             try {
-                importRSAkey(ram_buf, offset, len);
+                importRSAkey(buf, offset, len);
             } catch (InvalidArgumentsException e) {
                 ISOException.throwIt(ISO7816.SW_DATA_INVALID);
             } catch (NotFoundException e) {
@@ -1580,15 +1409,12 @@ public class IsoApplet extends Applet implements ExtendedLength {
         case ALG_GEN_EC:
             // EC key import.
 
-            // This ensures that all the data is located in ram_buf, beginning at zero.
-            recvLen = doChainingOrExtAPDU(apdu);
-
             // Parse the outer tag.
-            if( ram_buf[offset++] != (byte) 0xE0 ) {
+            if( buf[offset++] != (byte) 0xE0 ) {
                 ISOException.throwIt(ISO7816.SW_WRONG_DATA);
             }
             try {
-                len = UtilTLV.decodeLengthField(ram_buf, offset);
+                len = UtilTLV.decodeLengthField(buf, offset);
                 offset += UtilTLV.getLengthFieldLength(len);
             } catch (InvalidArgumentsException e) {
                 ISOException.throwIt(ISO7816.SW_DATA_INVALID);
@@ -1596,12 +1422,12 @@ public class IsoApplet extends Applet implements ExtendedLength {
             if(len != (short)(recvLen - offset)) {
                 ISOException.throwIt(ISO7816.SW_DATA_INVALID);
             }
-            if( ! UtilTLV.isTLVconsistent(ram_buf, offset, len) )	{
+            if( ! UtilTLV.isTLVconsistent(buf, offset, len) )	{
                 ISOException.throwIt(ISO7816.SW_DATA_INVALID);
             }
             // Import the key from the value field of the outer tag.
             try {
-                importECkey(ram_buf, offset, len);
+                importECkey(buf, offset, len);
             } catch (InvalidArgumentsException e) {
                 ISOException.throwIt(ISO7816.SW_DATA_INVALID);
             } catch (NotFoundException e) {
@@ -1610,48 +1436,6 @@ public class IsoApplet extends Applet implements ExtendedLength {
             break;
         default:
             ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
-        }
-    }
-
-    /**
-     * \brief Receive the data sent by chaining or extended apdus and store it in ram_buf.
-     *
-     * This is a convienience method if large data has to be accumulated using command chaining
-     * or extended apdus. The apdu must be in the INITIAL state, i.e. setIncomingAndReceive()
-     * might not have been called already.
-     *
-     * \param apdu The apdu object in the initial state.
-     *
-     * \throw ISOException SW_WRONG_LENGTH
-     */
-    private short doChainingOrExtAPDU(APDU apdu) throws ISOException {
-        byte[] buf = apdu.getBuffer();
-        short recvLen = apdu.setIncomingAndReceive();
-        short offset_cdata = apdu.getOffsetCdata();
-
-        // Receive data (short or extended).
-        while (recvLen > 0) {
-            if((short)(ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_POS] + recvLen) > RAM_BUF_SIZE) {
-                ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
-            }
-            Util.arrayCopyNonAtomic(buf, offset_cdata, ram_buf, ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_POS], recvLen);
-            ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_POS] += recvLen;
-            recvLen = apdu.receiveBytes(offset_cdata);
-        }
-
-        if(isCommandChainingCLA(apdu)) {
-            // We are still in the middle of a chain, otherwise there would not have been a chaining CLA.
-            // Make sure the caller does not forget to return as the data should only be interpreted
-            // when the chain is completed (when using this method).
-            ISOException.throwIt(ISO7816.SW_NO_ERROR);
-            return (short)0;
-        } else {
-            // Chain has ended or no chaining.
-            // We did receive the data, everything is fine.
-            // Reset the current position in ram_buf.
-            recvLen = (short) (recvLen + ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_POS]);
-            ram_chaining_cache[RAM_CHAINING_CACHE_OFFSET_CURRENT_POS] = 0;
-            return recvLen;
         }
     }
 
