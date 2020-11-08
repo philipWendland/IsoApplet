@@ -1,5 +1,7 @@
 General Information
 ===================
+[![Hits](https://hits.seeyoufarm.com/api/count/incr/badge.svg?url=https%3A%2F%2Fgithub.com%2FphilipWendland%2FIsoApplet&count_bg=%2379C83D&title_bg=%23555555&icon=&icon_color=%23E7E7E7&title=PAGE+VIEWS&edge_flat=false)](https://hits.seeyoufarm.com)
+
 The Java Card IsoApplet (e.g. for use with OpenSC).
 The Applet is capable of saving a PKCS#15 file structure and performing PKI related operations using the private key, such as signing or decrypting.
 Private keys can be generated directly on the smart card or imported from the host computer.
