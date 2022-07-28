@@ -37,6 +37,7 @@ import javacard.security.ECPrivateKey;
 import javacardx.crypto.Cipher;
 import javacardx.apdu.ExtendedLength;
 import javacard.security.CryptoException;
+import javacard.security.MessageDigest;
 import javacard.security.Signature;
 import javacard.security.RandomData;
 
@@ -54,8 +55,8 @@ import javacard.security.RandomData;
  */
 public class IsoApplet extends Applet implements ExtendedLength {
     /* API Version */
-    public static final byte API_VERSION_MAJOR = (byte) 0x00;
-    public static final byte API_VERSION_MINOR = (byte) 0x06;
+    public static final byte API_VERSION_MAJOR = (byte) 0x01;
+    public static final byte API_VERSION_MINOR = (byte) 0x00;
 
     /* Card-specific configuration */
     public static final boolean DEF_EXT_APDU = false;
@@ -184,7 +185,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
         rsaPkcs1Cipher = Cipher.getInstance(Cipher.ALG_RSA_PKCS1, false);
 
         try {
-            ecdsaSignature = Signature.getInstance(Signature.ALG_ECDSA_SHA, false);
+            ecdsaSignature = Signature.getInstance(MessageDigest.ALG_NULL, Signature.SIG_CIPHER_ECDSA, Cipher.PAD_NULL, false);
             api_features |= API_FEATURE_ECC;
         } catch (CryptoException e) {
             if(e.getReason() == CryptoException.NO_SUCH_ALGORITHM) {
