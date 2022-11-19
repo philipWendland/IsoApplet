@@ -23,7 +23,7 @@ Build process
 This project uses [ant-javacard](https://github.com/martinpaljak/ant-javacard) to build cap-files.
 After cloning the IsoApplet repository, all you have to do is:
 * Perform `git submodule init && git submodule update` to retrieve the Java Card SDKs, in case you did not `git clone --recursive` to clone this repository.
-* Install Apache `ant`, `openjdk-11-jdk-headless`
+* Install Apache `ant`, `openjdk-17-jdk-headless`
 * Invoke `ant` to produce the cap file.
 
 Installation
