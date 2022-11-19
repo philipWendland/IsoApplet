@@ -11,7 +11,7 @@ The applet targets modern Smartcards with Java Card 3.0.4 or above.
 Smartcard requirements
 ======================
 * Minimum Java Card version:
-    * 2.2.2 for legacy support [jc222 branch](https://github.com/philipWendland/IsoApplet/tree/jc222)
+    * 2.2.2 for legacy support [main-javacard-v2.2.2](https://github.com/philipWendland/IsoApplet/tree/main-javacard-v2.2.2)
     * 3.0.4 for the most recent version
 * Implementation of the "requestObjectDeletion()"-mechanism of the Java Card API is recommended to be able to properly delete files.
 * Support of javacardx.crypto.Cipher
