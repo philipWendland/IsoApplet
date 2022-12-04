@@ -116,6 +116,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
     private static final byte STATE_OPERATIONAL_DEACTIVATED = (byte) 0x04; // Applet usage is deactivated. (Unused at the moment.)
     private static final byte STATE_TERMINATED = (byte) 0x0C; // Applet usage is terminated. (Unused at the moment.)
 
+    private static final byte API_FEATURE_EXT_APDU = (byte) 0x01;
     private static final byte API_FEATURE_SECURE_RANDOM = (byte) 0x02;
     private static final byte API_FEATURE_ECC = (byte) 0x04;
     private static final byte API_FEATURE_RSA_SHA256_PSS = (byte) 0x08;
@@ -156,7 +157,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
      * \brief Only this class's install method should create the applet object.
      */
     protected IsoApplet() {
-        api_features = 0;
+        api_features = API_FEATURE_EXT_APDU;
         pin = new OwnerPIN(PIN_MAX_TRIES, PIN_MAX_LENGTH);
         fs = new IsoFileSystem();
 
@@ -184,7 +185,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
 
         // API features: probe card support for 4096 bit RSA keys
         try {
-            RSAPrivateCrtKey testKey = (RSAPrivateCrtKey)KeyBuilder.buildKey(KeyBuilder.ALG_TYPE_RSA_CRT_PRIVATE, KeyBuilder.LENGTH_RSA_4096, false);
+            RSAPrivateCrtKey testKey = (RSAPrivateCrtKey)KeyBuilder.buildKey(KeyBuilder.TYPE_RSA_CRT_PRIVATE, KeyBuilder.LENGTH_RSA_4096, false);
             api_features |= API_FEATURE_RSA_4096;
         } catch (CryptoException e) {
             if(e.getReason() == CryptoException.NO_SUCH_ALGORITHM) {
@@ -878,11 +879,22 @@ public class IsoApplet extends Applet implements ExtendedLength {
         short len, r;
         byte[] buf = apdu.getBuffer();
 
+        short le = apdu.setOutgoing();
+
         // Return pubkey. See ISO7816-8 table 3.
         len = (short)(7 // We have: 7 tags,
                       + (key.getSize() >= LENGTH_EC_FP_512 ? 9 : 7) // 7 length fields, of which 2 are 2 byte fields when using 521 bit curves,
                       + 8 * field_bytes + 4); // 4 * field_len + 2 * 2 field_len + cofactor (2 bytes) + 2 * uncompressed tag
+
         pos += UtilTLV.writeTagAndLen((short)0x7F49, len, buf, pos);
+
+        // Total size = sizeof(Start-TLV) + len = pos + len
+        short toSend = (short)(len + pos);
+        if (toSend < le) {
+            apdu.setOutgoingLength(toSend);
+        } else if (toSend > le) {
+            ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
+        }
 
         // Prime - "P"
         len = field_bytes;
@@ -896,7 +908,10 @@ public class IsoApplet extends Applet implements ExtendedLength {
         } else if (r > len) {
             throw InvalidArgumentsException.getInstance();
         }
+        // Send the data after each field to avoid buffer overflows
         pos += len;
+        apdu.sendBytes((short)0, pos);
+        pos = (short)0;
 
         // First coefficient - "A"
         len = field_bytes;
@@ -909,6 +924,8 @@ public class IsoApplet extends Applet implements ExtendedLength {
             throw InvalidArgumentsException.getInstance();
         }
         pos += len;
+        apdu.sendBytes((short)0, pos);
+        pos = (short)0;
 
         // Second coefficient - "B"
         len = field_bytes;
@@ -921,6 +938,8 @@ public class IsoApplet extends Applet implements ExtendedLength {
             throw InvalidArgumentsException.getInstance();
         }
         pos += len;
+        apdu.sendBytes((short)0, pos);
+        pos = (short)0;
 
         // Generator - "PB"
         len = (short)(1 + 2 * field_bytes);
@@ -933,6 +952,8 @@ public class IsoApplet extends Applet implements ExtendedLength {
             throw InvalidArgumentsException.getInstance();
         }
         pos += len;
+        apdu.sendBytes((short)0, pos);
+        pos = (short)0;
 
         // Order - "Q"
         len = field_bytes;
@@ -945,6 +966,8 @@ public class IsoApplet extends Applet implements ExtendedLength {
             throw InvalidArgumentsException.getInstance();
         }
         pos += len;
+        apdu.sendBytes((short)0, pos);
+        pos = (short)0;
 
         // Public key - "PP"
         len = (short)(1 + 2 * field_bytes);
@@ -963,9 +986,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
         pos += UtilTLV.writeTagAndLen((short)0x87, len, buf, pos);
         Util.setShort(buf, pos, key.getK());
         pos += 2;
-
-        // buf now contains the complete public key.
-        apdu.setOutgoingAndSend((short)0, pos);
+        apdu.sendBytes((short)0, pos);
     }
 
     /**
