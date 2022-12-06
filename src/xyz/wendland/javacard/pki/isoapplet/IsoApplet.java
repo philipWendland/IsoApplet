@@ -96,8 +96,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
     private static final byte ALG_GEN_RSA_2048 = (byte) 0xF3;
     private static final byte ALG_GEN_RSA_4096 = (byte) 0xF5;
     private static final byte ALG_RSA_PAD_PKCS1 = (byte) 0x11;
-    private static final byte ALG_RSA_PAD_PSS_SHA256 = (byte) 0x12;
-    private static final byte ALG_RSA_PAD_PSS_SHA512 = (byte) 0x13;
+    private static final byte ALG_RSA_PAD_PSS = (byte) 0x12;
 
     private static final byte ALG_GEN_EC = (byte) 0xEC;
     private static final byte ALG_ECDSA_SHA1 = (byte) 0x21;
@@ -119,8 +118,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
     private static final byte API_FEATURE_EXT_APDU = (byte) 0x01;
     private static final byte API_FEATURE_SECURE_RANDOM = (byte) 0x02;
     private static final byte API_FEATURE_ECC = (byte) 0x04;
-    private static final byte API_FEATURE_RSA_SHA256_PSS = (byte) 0x08;
-    private static final byte API_FEATURE_RSA_SHA512_PSS = (byte) 0x10;
+    private static final byte API_FEATURE_RSA_PSS = (byte) 0x08;
     private static final byte API_FEATURE_RSA_4096 = (byte) 0x20;
 
     /* The ram buffer is required for request and response data, that is too large for the APDU buffer.
@@ -141,7 +139,10 @@ public class IsoApplet extends Applet implements ExtendedLength {
     private byte[] ram_buf = null;
     private Cipher rsaPkcs1Cipher = null;
     private Signature ecdsaSignature = null;
+    private Signature rsaSha1PssSignature = null;
+    private Signature rsaSha224PssSignature = null;
     private Signature rsaSha256PssSignature = null;
+    private Signature rsaSha384PssSignature = null;
     private Signature rsaSha512PssSignature = null;
     private RandomData randomData = null;
     private byte api_features;
@@ -204,35 +205,26 @@ public class IsoApplet extends Applet implements ExtendedLength {
             }
         }
 
-        /* API features: probe card support for RSA with SHA256 and PSS padding,
+        /* API features: probe card support for RSA and PSS padding with SHA-1 and all SHA-2 algorithms
          * to be used with Signature.signPreComputedHash() */
         try {
+            rsaSha1PssSignature = Signature.getInstance(Signature.ALG_RSA_SHA_PKCS1_PSS, false);
+            rsaSha224PssSignature = Signature.getInstance(Signature.ALG_RSA_SHA_224_PKCS1_PSS, false);
             rsaSha256PssSignature = Signature.getInstance(Signature.ALG_RSA_SHA_256_PKCS1_PSS, false);
-            api_features |= API_FEATURE_RSA_SHA256_PSS;
-        } catch (CryptoException e) {
-            if(e.getReason() == CryptoException.NO_SUCH_ALGORITHM) {
-                /* Certain Java Cards do not support this algorithm.
-                 * We should not throw an exception in this cases
-                 * as this would prevent installation. */
-                rsaSha256PssSignature = null;
-                api_features &= ~API_FEATURE_RSA_SHA256_PSS;
-            } else {
-                throw e;
-            }
-        }
-
-        /* API features: probe card support for RSA with SHA512 and PSS padding,
-         * to be used with Signature.signPreComputedHash() */
-        try {
+            rsaSha384PssSignature = Signature.getInstance(Signature.ALG_RSA_SHA_384_PKCS1_PSS, false);
             rsaSha512PssSignature = Signature.getInstance(Signature.ALG_RSA_SHA_512_PKCS1_PSS, false);
-            api_features |= API_FEATURE_RSA_SHA512_PSS;
+            api_features |= API_FEATURE_RSA_PSS;
         } catch (CryptoException e) {
             if(e.getReason() == CryptoException.NO_SUCH_ALGORITHM) {
                 /* Certain Java Cards do not support this algorithm.
                  * We should not throw an exception in this cases
                  * as this would prevent installation. */
+                rsaSha1PssSignature = null;
+                rsaSha224PssSignature = null;
+                rsaSha384PssSignature = null;
+                rsaSha256PssSignature = null;
                 rsaSha512PssSignature = null;
-                api_features &= ~API_FEATURE_RSA_SHA512_PSS;
+                api_features &= ~API_FEATURE_RSA_PSS;
             } else {
                 throw e;
             }
@@ -1118,8 +1110,8 @@ public class IsoApplet extends Applet implements ExtendedLength {
                 ISOException.throwIt(ISO7816.SW_DATA_INVALID);
             }
 
-            // Supported signature algorithms: RSA with PKCS1 padding, ECDSA with raw input.
-            if(algRef == ALG_RSA_PAD_PKCS1 || algRef == ALG_RSA_PAD_PSS_SHA256 || algRef == ALG_RSA_PAD_PSS_SHA512) {
+            // Supported signature algorithms: RSA with PKCS1 or PSS padding, ECDSA with raw input.
+            if(algRef == ALG_RSA_PAD_PKCS1 || algRef == ALG_RSA_PAD_PSS) {
                 // Key reference must point to a RSA private key.
                 if(keys[privKeyRef].getType() != KeyBuilder.TYPE_RSA_CRT_PRIVATE) {
                     ISOException.throwIt(ISO7816.SW_DATA_INVALID);
@@ -1276,14 +1268,10 @@ public class IsoApplet extends Applet implements ExtendedLength {
 
         switch(currentAlgorithmRef[0]) {
         case ALG_RSA_PAD_PKCS1:
-        case ALG_RSA_PAD_PSS_SHA256:
-        case ALG_RSA_PAD_PSS_SHA512:
+        case ALG_RSA_PAD_PSS:
             // Receive.
             // Bytes received must be Lc.
             lc = readIncomingDataIntoRam(apdu);
-            if(lc != apdu.getIncomingLength()) {
-                ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
-            }
 
             // RSA signature operation.
             RSAPrivateCrtKey rsaKey = (RSAPrivateCrtKey) keys[currentPrivateKeyRef[0]];
@@ -1297,23 +1285,31 @@ public class IsoApplet extends Applet implements ExtendedLength {
                 if(sigLen != 256) {
                     ISOException.throwIt(ISO7816.SW_UNKNOWN);
                 }
-            } else if(currentAlgorithmRef[0] == ALG_RSA_PAD_PSS_SHA256) {
-                if(lc != (short) 32) {
+            } else if (currentAlgorithmRef[0] == ALG_RSA_PAD_PSS) {
+                // ALG_RSA_PAD_PSS with pre-computed hash.
+                // Determine Signature object by hash length.
+                if(lc == (short) 20) {
+                    rsaSha1PssSignature.init(rsaKey, Signature.MODE_SIGN);
+                    sigLen = rsaSha1PssSignature.signPreComputedHash(ram_buf, (short)0, lc, ram_buf, lc);
+                } else if (lc == (short) 28) {
+                    rsaSha224PssSignature.init(rsaKey, Signature.MODE_SIGN);
+                    sigLen = rsaSha224PssSignature.signPreComputedHash(ram_buf, (short)0, lc, ram_buf, lc);
+                } else if (lc == (short) 32) {
+                    rsaSha256PssSignature.init(rsaKey, Signature.MODE_SIGN);
+                    sigLen = rsaSha256PssSignature.signPreComputedHash(ram_buf, (short)0, lc, ram_buf, lc);
+                } else if (lc == (short) 48) {
+                    rsaSha384PssSignature.init(rsaKey, Signature.MODE_SIGN);
+                    sigLen = rsaSha384PssSignature.signPreComputedHash(ram_buf, (short)0, lc, ram_buf, lc);
+                } else if (lc == (short) 64) {
+                    rsaSha512PssSignature.init(rsaKey, Signature.MODE_SIGN);
+                    sigLen = rsaSha512PssSignature.signPreComputedHash(ram_buf, (short)0, lc, ram_buf, lc);
+                } else {
                     ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
                 }
-                rsaSha256PssSignature.init(rsaKey, Signature.MODE_SIGN);
-                sigLen = rsaSha256PssSignature.signPreComputedHash(ram_buf, (short)0, lc, ram_buf, lc);
-            } else if(currentAlgorithmRef[0] == ALG_RSA_PAD_PSS_SHA512) {
-                if(lc != (short) 64) {
-                    ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
-                }
-                rsaSha512PssSignature.init(rsaKey, Signature.MODE_SIGN);
-                sigLen = rsaSha512PssSignature.signPreComputedHash(ram_buf, (short)0, lc, ram_buf, lc);
             } else {
                 ISOException.throwIt(ISO7816.SW_FUNC_NOT_SUPPORTED);
             }
 
-            // A single short APDU can handle 256 bytes - only one send operation neccessary.
             short le = apdu.setOutgoing();
             if(le < sigLen) {
                 ISOException.throwIt(ISO7816.SW_CORRECT_LENGTH_00);
