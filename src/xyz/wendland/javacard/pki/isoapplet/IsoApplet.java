@@ -1208,7 +1208,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
         short lc = readIncomingDataIntoRam(apdu);
 
         // Padding indicator should be "No further indication".
-        if(ram_buf[apdu.getOffsetCdata()] != (byte) 0x00) {
+        if(ram_buf[0] != (byte) 0x00) {
             ISOException.throwIt(ISO7816.SW_WRONG_DATA);
         }
 
