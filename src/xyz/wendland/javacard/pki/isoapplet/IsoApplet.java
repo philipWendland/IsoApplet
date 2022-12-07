@@ -1707,9 +1707,9 @@ public class IsoApplet extends Applet implements ExtendedLength {
         if(le <= 0 || le > 256) {
             ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
         }
-        randomData.generateData(buf, (short)0, le);
+        randomData.generateData(ram_buf, (short)0, le);
         apdu.setOutgoingLength(le);
-        apdu.sendBytes((short)0, le);
+        apdu.sendBytesLong(ram_buf, (short)0, le);
     }
 
 } // class IsoApplet
