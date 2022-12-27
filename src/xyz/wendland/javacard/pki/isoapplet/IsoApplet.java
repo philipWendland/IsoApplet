@@ -99,7 +99,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
     private static final byte ALG_RSA_PAD_PSS = (byte) 0x12;
 
     private static final byte ALG_GEN_EC = (byte) 0xEC;
-    private static final byte ALG_ECDSA_SHA1 = (byte) 0x21;
+    private static final byte ALG_ECDSA = (byte) 0x21;
 
     private static final short LENGTH_EC_FP_224 = 224;
     private static final short LENGTH_EC_FP_256 = 256;
@@ -1124,7 +1124,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
                     ISOException.throwIt(ISO7816.SW_DATA_INVALID);
                 }
 
-            } else if(algRef == ALG_ECDSA_SHA1) {
+            } else if(algRef == ALG_ECDSA) {
                 // Key reference must point to a EC private key.
                 if(keys[privKeyRef].getType() != KeyBuilder.TYPE_EC_FP_PRIVATE) {
                     ISOException.throwIt(ISO7816.SW_DATA_INVALID);
