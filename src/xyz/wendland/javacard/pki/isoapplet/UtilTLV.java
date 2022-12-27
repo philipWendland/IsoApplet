@@ -197,6 +197,9 @@ public class UtilTLV {
         if(len < 0) {
             throw InvalidArgumentsException.getInstance();
         }
+        if((short)(tagLen + getLengthFieldLength(len)) > (short)(outLen - outOffset)) {
+            throw NotEnoughSpaceException.getInstance();
+        }
 
         if(tagLen == 1) {
             out[pos] = (byte)(tag & (short)0x00FF);
