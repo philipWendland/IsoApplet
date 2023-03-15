@@ -37,5 +37,31 @@ After cloning the IsoApplet repository, all you have to do is:
 # Installation
 Install the CAP-file (IsoApplet.cap) to your Java Card smart card (e.g. with [GlobalPlatformPro](https://github.com/martinpaljak/GlobalPlatformPro)).
 
+# Using with jcardsim
+Make sure to install the appropriate vsmartcard package. On Debian/Ubuntu, this is called vsmartcard-vpcd. You may need to restart pcscd after installing it. Note: This is only appropriate for development machines; it creates an open listening socket with no authentication that pcscd exposes as the first reader so it is trivial to MitM for an attacker.
+
+Setup a jcardsim.cfg file like so:
+```
+com.licel.jcardsim.card.applet.0.AID=F276A288BCFBA69D34F31001
+com.licel.jcardsim.card.applet.0.Class=xyz.wendland.javacard.pki.isoapplet.IsoApplet
+com.licel.jcardsim.terminal.type=2
+com.licel.jcardsim.vsmartcard.host=127.0.0.1
+com.licel.jcardsim.vsmartcard.port=35963
+```
+
+Run jcardsim with the IsoApplet.jar file on the path:
+```java -cp IsoApplet.jar:jcardsim-3.0.5-SNAPSHOT.jar com.licel.jcardsim.remote.VSmartCard  jcardsim.cfg```
+
+Instantiate the applet in jcardsim (this example uses gpshell):
+```
+echo 'establish_context
+card_connect
+send_apdu -sc 0 -APDU 80b800000d0cF276A288BCFBA69D34F31001
+card_disconnect
+release_context' | gpshell
+```
+
+Now you should be able to use pkcs15-init and friends.
+
 **Have a look at the wiki for more information:** https://github.com/philipWendland/IsoApplet/wiki
 

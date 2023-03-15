@@ -1,6 +1,6 @@
-ant-javacard.jar
 doc
 *.swp
 *.orig
 *.un~
 *.cap
+*.jar
