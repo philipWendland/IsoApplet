@@ -23,6 +23,8 @@ import javacard.framework.Applet;
 import javacard.framework.ISO7816;
 import javacard.framework.ISOException;
 import javacard.framework.APDU;
+import javacard.framework.SystemException;
+import javacard.framework.TransactionException;
 import javacard.framework.JCSystem;
 import javacard.framework.Util;
 import javacard.framework.OwnerPIN;
@@ -60,6 +62,11 @@ public class IsoApplet extends Applet implements ExtendedLength {
 
     /* Card-specific configuration */
     public static final boolean DEF_PRIVATE_KEY_IMPORT_ALLOWED = false;
+
+    /* Certain cards (J3H081) break in unexpected ways testing these at
+     * runtime. Allow them to be forced off so no test is run. */
+    public static final boolean DEF_TEST_RSA_4096 = true;
+    public static final boolean DEF_TEST_RSA_PSS = true;
 
     /* ISO constants not in the "ISO7816" interface */
     // File system related INS:
@@ -138,12 +145,6 @@ public class IsoApplet extends Applet implements ExtendedLength {
     private Key[] keys = null;
     private byte[] ram_buf = null;
     private Cipher rsaPkcs1Cipher = null;
-    private Signature ecdsaSignature = null;
-    private Signature rsaSha1PssSignature = null;
-    private Signature rsaSha224PssSignature = null;
-    private Signature rsaSha256PssSignature = null;
-    private Signature rsaSha384PssSignature = null;
-    private Signature rsaSha512PssSignature = null;
     private RandomData randomData = null;
     private byte api_features;
 
@@ -179,14 +180,13 @@ public class IsoApplet extends Applet implements ExtendedLength {
 
         // API features: probe card support for ECDSA
         try {
-            ecdsaSignature = Signature.getInstance(MessageDigest.ALG_NULL, Signature.SIG_CIPHER_ECDSA, Cipher.PAD_NULL, false);
+            Signature.getInstance(MessageDigest.ALG_NULL, Signature.SIG_CIPHER_ECDSA, Cipher.PAD_NULL, false);
             api_features |= API_FEATURE_ECC;
         } catch (CryptoException e) {
             if(e.getReason() == CryptoException.NO_SUCH_ALGORITHM) {
                 /* Few Java Cards do not support ECDSA at all.
                  * We should not throw an exception in this cases
                  * as this would prevent installation. */
-                ecdsaSignature = null;
                 api_features &= ~API_FEATURE_ECC;
             } else {
                 throw e;
@@ -194,39 +194,46 @@ public class IsoApplet extends Applet implements ExtendedLength {
         }
 
         // API features: probe card support for 4096 bit RSA keys
-        try {
-            RSAPrivateCrtKey testKey = (RSAPrivateCrtKey)KeyBuilder.buildKey(KeyBuilder.TYPE_RSA_CRT_PRIVATE, KeyBuilder.LENGTH_RSA_4096, false);
-            api_features |= API_FEATURE_RSA_4096;
-        } catch (CryptoException e) {
-            if(e.getReason() == CryptoException.NO_SUCH_ALGORITHM) {
-                api_features &= ~API_FEATURE_RSA_4096;
-            } else {
-                throw e;
+        if (DEF_TEST_RSA_4096) {
+            try {
+                RSAPrivateCrtKey testKey = (RSAPrivateCrtKey)KeyBuilder.buildKey(KeyBuilder.TYPE_RSA_CRT_PRIVATE, KeyBuilder.LENGTH_RSA_4096, false);
+                api_features |= API_FEATURE_RSA_4096;
+            } catch (CryptoException e) {
+                if(e.getReason() == CryptoException.NO_SUCH_ALGORITHM) {
+                    api_features &= ~API_FEATURE_RSA_4096;
+                } else {
+                    throw e;
+                }
+            } catch (TransactionException e) {
+                // J3H081 from javacardsdk.com (FUTAKO) raises this exception instead.
+                if(e.getReason() == TransactionException.INTERNAL_FAILURE) {
+                    api_features &= ~API_FEATURE_RSA_4096;
+                } else {
+                    throw e;
+                }
             }
         }
 
+
         /* API features: probe card support for RSA and PSS padding with SHA-1 and all SHA-2 algorithms
          * to be used with Signature.signPreComputedHash() */
-        try {
-            rsaSha1PssSignature = Signature.getInstance(Signature.ALG_RSA_SHA_PKCS1_PSS, false);
-            rsaSha224PssSignature = Signature.getInstance(Signature.ALG_RSA_SHA_224_PKCS1_PSS, false);
-            rsaSha256PssSignature = Signature.getInstance(Signature.ALG_RSA_SHA_256_PKCS1_PSS, false);
-            rsaSha384PssSignature = Signature.getInstance(Signature.ALG_RSA_SHA_384_PKCS1_PSS, false);
-            rsaSha512PssSignature = Signature.getInstance(Signature.ALG_RSA_SHA_512_PKCS1_PSS, false);
-            api_features |= API_FEATURE_RSA_PSS;
-        } catch (CryptoException e) {
-            if(e.getReason() == CryptoException.NO_SUCH_ALGORITHM) {
-                /* Certain Java Cards do not support this algorithm.
-                 * We should not throw an exception in this cases
-                 * as this would prevent installation. */
-                rsaSha1PssSignature = null;
-                rsaSha224PssSignature = null;
-                rsaSha384PssSignature = null;
-                rsaSha256PssSignature = null;
-                rsaSha512PssSignature = null;
-                api_features &= ~API_FEATURE_RSA_PSS;
-            } else {
-                throw e;
+        if (DEF_TEST_RSA_PSS) {
+            try {
+                Signature.getInstance(Signature.ALG_RSA_SHA_PKCS1_PSS, false);
+                Signature.getInstance(Signature.ALG_RSA_SHA_224_PKCS1_PSS, false);
+                Signature.getInstance(Signature.ALG_RSA_SHA_256_PKCS1_PSS, false);
+                Signature.getInstance(Signature.ALG_RSA_SHA_384_PKCS1_PSS, false);
+                Signature.getInstance(Signature.ALG_RSA_SHA_512_PKCS1_PSS, false);
+                api_features |= API_FEATURE_RSA_PSS;
+            } catch (CryptoException e) {
+                if(e.getReason() == CryptoException.NO_SUCH_ALGORITHM) {
+                    /* Certain Java Cards do not support this algorithm.
+                     * We should not throw an exception in this cases
+                     * as this would prevent installation. */
+                    api_features &= ~API_FEATURE_RSA_PSS;
+                } else {
+                    throw e;
+                }
             }
         }
 
@@ -1101,7 +1108,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
             if(privKeyRef < 0) {
                 ISOException.throwIt(ISO7816.SW_DATA_INVALID);
             }
-            if(algRef == ALG_GEN_EC && ecdsaSignature == null) {
+            if(algRef == ALG_GEN_EC && (api_features & API_FEATURE_ECC) == 0) {
                 // There are cards that do not support ECDSA at all.
                 ISOException.throwIt(ISO7816.SW_FUNC_NOT_SUPPORTED);
             }
@@ -1129,7 +1136,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
                 if(keys[privKeyRef].getType() != KeyBuilder.TYPE_EC_FP_PRIVATE) {
                     ISOException.throwIt(ISO7816.SW_DATA_INVALID);
                 }
-                if(ecdsaSignature == null) {
+                if((api_features & API_FEATURE_ECC) == 0) {
                     ISOException.throwIt(ISO7816.SW_FUNC_NOT_SUPPORTED);
                 }
 
@@ -1297,23 +1304,26 @@ public class IsoApplet extends Applet implements ExtendedLength {
             } else if (currentAlgorithmRef[0] == ALG_RSA_PAD_PSS) {
                 // ALG_RSA_PAD_PSS with pre-computed hash.
                 // Determine Signature object by hash length.
+                Signature obj = null;
                 if(lc == (short) 20) {
-                    rsaSha1PssSignature.init(rsaKey, Signature.MODE_SIGN);
-                    sigLen = rsaSha1PssSignature.signPreComputedHash(ram_buf, (short)0, lc, ram_buf, lc);
+                    obj = Signature.getInstance(Signature.ALG_RSA_SHA_PKCS1_PSS, false);
                 } else if (lc == (short) 28) {
-                    rsaSha224PssSignature.init(rsaKey, Signature.MODE_SIGN);
-                    sigLen = rsaSha224PssSignature.signPreComputedHash(ram_buf, (short)0, lc, ram_buf, lc);
+                    obj = Signature.getInstance(Signature.ALG_RSA_SHA_224_PKCS1_PSS, false);
                 } else if (lc == (short) 32) {
-                    rsaSha256PssSignature.init(rsaKey, Signature.MODE_SIGN);
-                    sigLen = rsaSha256PssSignature.signPreComputedHash(ram_buf, (short)0, lc, ram_buf, lc);
+                    obj = Signature.getInstance(Signature.ALG_RSA_SHA_256_PKCS1_PSS, false);
                 } else if (lc == (short) 48) {
-                    rsaSha384PssSignature.init(rsaKey, Signature.MODE_SIGN);
-                    sigLen = rsaSha384PssSignature.signPreComputedHash(ram_buf, (short)0, lc, ram_buf, lc);
+                    obj = Signature.getInstance(Signature.ALG_RSA_SHA_384_PKCS1_PSS, false);
                 } else if (lc == (short) 64) {
-                    rsaSha512PssSignature.init(rsaKey, Signature.MODE_SIGN);
-                    sigLen = rsaSha512PssSignature.signPreComputedHash(ram_buf, (short)0, lc, ram_buf, lc);
+                    obj = Signature.getInstance(Signature.ALG_RSA_SHA_512_PKCS1_PSS, false);
                 } else {
                     ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
+                }
+
+                obj.init(rsaKey, Signature.MODE_SIGN);
+                sigLen = obj.signPreComputedHash(ram_buf, (short)0, lc, ram_buf, lc);
+
+                if(JCSystem.isObjectDeletionSupported()) {
+                    JCSystem.requestObjectDeletion();
                 }
             } else {
                 ISOException.throwIt(ISO7816.SW_FUNC_NOT_SUPPORTED);
@@ -1331,8 +1341,12 @@ public class IsoApplet extends Applet implements ExtendedLength {
             // Get the key - it must be a EC private key,
             // checks have been done in MANAGE SECURITY ENVIRONMENT.
             ECPrivateKey ecKey = (ECPrivateKey) keys[currentPrivateKeyRef[0]];
+            Signature ecdsaSignature = Signature.getInstance(MessageDigest.ALG_NULL, Signature.SIG_CIPHER_ECDSA, Cipher.PAD_NULL, false);
             ecdsaSignature.init(ecKey, Signature.MODE_SIGN);
             sigLen = ecdsaSignature.sign(ram_buf, (short)0, lc, apdu.getBuffer(), (short)0);
+            if(JCSystem.isObjectDeletionSupported()) {
+                JCSystem.requestObjectDeletion();
+            }
             apdu.setOutgoingAndSend((short) 0, sigLen);
             break;
 
