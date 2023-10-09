@@ -33,6 +33,7 @@ After cloning the IsoApplet repository, all you have to do is:
 * Perform `git submodule init && git submodule update` to retrieve the Java Card SDKs, in case you did not `git clone --recursive` to clone this repository.
 * Install Apache `ant`, `openjdk-17-jdk-headless`
 * Invoke `ant` to produce the cap file.
+If you have build errors on an existing repository, try deleting the ant-javacard.jar file so that the newest version is downloaded.
 
 # Installation
 Install the CAP-file (IsoApplet.cap) to your Java Card smart card (e.g. with [GlobalPlatformPro](https://github.com/martinpaljak/GlobalPlatformPro)).
