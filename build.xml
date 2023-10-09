@@ -7,8 +7,8 @@
     <description>Builds the project. </description>
     <target name="dist" description="generate the distribution">
         <tstamp/>
-        <javacard jckit="ext/sdks/jc305u3_kit">
-            <cap targetsdk="ext/sdks/jc222_kit" aid="f2:76:a2:88:bc:fb:a6:9d:34:f3:10" output="IsoApplet.cap" sources="src" version="1.0">
+        <javacard jckit="ext/sdks/jc305u4_kit/">
+		<cap targetsdk="ext/sdks/jc222_kit" aid="f2:76:a2:88:bc:fb:a6:9d:34:f3:10" output="IsoApplet.cap" sources="src" version="1.0">
                 <applet class="xyz.wendland.javacard.pki.isoapplet.IsoApplet" aid="f2:76:a2:88:bc:fb:a6:9d:34:f3:10:01"/>
             </cap>
         </javacard>

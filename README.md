@@ -26,6 +26,7 @@ The legacy version is found on the [main-javacard-v2.2.2 branch](https://github.
 It targets smartcards with Java Card version >= 2.2.2.
 The ECDSA implementation with Java Card version 2.2.2 is hardly usable in practice because it requires on-card hash generation.
 If your smartcard implements javacardx.apdu.ExtendedLength and IsoApplet is configured with `DEF_EXT_APDU` in `IsoApplet.java`, you can use extended APDUs.
+You need to use JDK 11 to build for Java Cards v2.2.2 using the SDK 3.0.5.
 
 # Build process
 This project uses [ant-javacard](https://github.com/martinpaljak/ant-javacard) to build cap-files.
