@@ -1700,7 +1700,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
             ISOException.throwIt(ISO7816.SW_FUNC_NOT_SUPPORTED);
         }
 
-        if(p1 != 0x00 || p1 != 0x00) {
+        if(p1 != 0x00 || p2 != 0x00) {
             ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
         }
         short le = apdu.setOutgoing();
