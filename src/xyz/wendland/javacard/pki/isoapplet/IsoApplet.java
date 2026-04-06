@@ -126,7 +126,7 @@ public class IsoApplet extends Applet implements ExtendedLength {
        We have to use the ram buffer for outgoing and incoming data larger than 133 bytes,
        unless the data is directly read from or written to the file system.
     */
-    private static final short RAM_BUF_SIZE = (short) 660;
+    private static final short RAM_BUF_SIZE = (short) 1330;
 
     /* Member variables: */
     private byte state;
