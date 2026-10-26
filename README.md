@@ -16,6 +16,7 @@ This is very common among Java Card smartcards.
 This version is found on the [main branch](https://github.com/philipWendland/IsoApplet/tree/main).
 It targets smartcards with Java Card version >= 3.0.4.
 This version requires extended APDUs the be used and supported by your reader and smartcard (javacardx.apdu.ExtendedLength).
+It is not recommended to use smart cards that do not support the object deletion mechanism (JCSystem.isObjectDeletionSupported()), but all Java Cards version >= 3.0.4 should support it.
 If supported by your smart card, the newer version of IsoApplet supports the following additional features:
 * RSA keys of 4096 bit length
 * RSA PSS signatures

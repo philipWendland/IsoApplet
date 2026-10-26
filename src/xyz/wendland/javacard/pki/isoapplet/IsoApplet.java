@@ -166,10 +166,6 @@ public class IsoApplet extends Applet implements ExtendedLength {
      * \brief Only this class's install method should create the applet object.
      */
     protected IsoApplet() {
-        if( ! JCSystem.isObjectDeletionSupported()) {
-            ISOException.throwIt(ISO7816.SW_FUNC_NOT_SUPPORTED);
-        }
-
         api_features = API_FEATURE_EXT_APDU;
         pin = new OwnerPIN(PIN_MAX_TRIES, PIN_MAX_LENGTH);
         fs = new IsoFileSystem();
