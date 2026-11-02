@@ -1247,10 +1247,13 @@ public class IsoApplet extends Applet implements ExtendedLength {
 
             rsaPkcs1Cipher.init(theKey, Cipher.MODE_DECRYPT);
             short decLen = -1;
-            // ram_buf is used as in and output buffer. Make sure that there is no overlap.
+            // ram_buf is used as in and output buffer. The ciphertext is exactly one
+            // RSA block (block-aligned), so the output may overlap the input as long
+            // as outOffset <= inOffset (see Java Card API, Cipher.doFinal() notes).
+            // This way, decryption needs no RAM beyond the ciphertext itself.
             short inOffset = (short)1; // ignore padding indicator
             short inLength = (short)(lc-1); // input length without padding indicator
-            short outOffset = lc; // inOffset + inLength = lc
+            short outOffset = (short)0; // overwrite padding indicator and ciphertext
             try {
                 decLen = rsaPkcs1Cipher.doFinal(ram_buf, inOffset, inLength, ram_buf, outOffset);
             } catch(CryptoException e) {
