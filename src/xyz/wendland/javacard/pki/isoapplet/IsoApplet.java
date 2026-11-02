@@ -859,6 +859,9 @@ public class IsoApplet extends Applet implements ExtendedLength {
         short recvLen = apdu.setIncomingAndReceive();
         short dataOffset = apdu.getOffsetCdata();
         short ramOffset = 0;
+        if(apdu.getIncomingLength() > RAM_BUF_SIZE) {
+            ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
+        }
         while (recvLen > 0) {
             ramOffset = Util.arrayCopyNonAtomic(buf, dataOffset, ram_buf, ramOffset, recvLen);
             recvLen = apdu.receiveBytes(dataOffset);
