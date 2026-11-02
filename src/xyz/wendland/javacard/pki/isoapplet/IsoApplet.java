@@ -1257,12 +1257,17 @@ public class IsoApplet extends Applet implements ExtendedLength {
             try {
                 decLen = rsaPkcs1Cipher.doFinal(ram_buf, inOffset, inLength, ram_buf, outOffset);
             } catch(CryptoException e) {
+                // ram_buf may have been partially modified.
+                Util.arrayFillNonAtomic(ram_buf, (short)0, lc, (byte)0x00);
                 ISOException.throwIt(ISO7816.SW_WRONG_DATA);
             }
 
             apdu.setOutgoing();
             apdu.setOutgoingLength(decLen);
             apdu.sendBytesLong(ram_buf, outOffset, decLen);
+            // The plaintext (e.g. a session key) must not remain in ram_buf.
+            // sendBytesLong() has copied it already, so it is safe to clear it now.
+            Util.arrayFillNonAtomic(ram_buf, (short)0, lc, (byte)0x00);
             break;
 
         default:
@@ -1304,8 +1309,17 @@ public class IsoApplet extends Applet implements ExtendedLength {
                 if(lc > (short) (keySize - 11)) {
                     ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
                 }
+                // The input is not block-aligned, so input and signature must not overlap
+                // in ram_buf (see Java Card API, Cipher.doFinal() notes).
+                if((short)(lc + keySize) > RAM_BUF_SIZE) {
+                    ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
+                }
                 rsaPkcs1Cipher.init(rsaKey, Cipher.MODE_ENCRYPT);
-                sigLen = rsaPkcs1Cipher.doFinal(ram_buf, (short)0, lc, ram_buf, lc);
+                try {
+                    sigLen = rsaPkcs1Cipher.doFinal(ram_buf, (short)0, lc, ram_buf, lc);
+                } catch(CryptoException e) {
+                    ISOException.throwIt(ISO7816.SW_UNKNOWN);
+                }
                 if(sigLen != keySize) {
                     ISOException.throwIt(ISO7816.SW_UNKNOWN);
                 }
@@ -1403,6 +1417,27 @@ public class IsoApplet extends Applet implements ExtendedLength {
         }
 
         short recvLen = readIncomingDataIntoRam(apdu);
+        try {
+            importPrivateKeyFromRam(recvLen);
+        } catch (ISOException e) {
+            // On error, the (partial) private key must not remain in ram_buf.
+            Util.arrayFillNonAtomic(ram_buf, (short)0, recvLen, (byte)0x00);
+            ISOException.throwIt(e.getReason());
+        } catch (CryptoException e) {
+            // E.g. a key component was rejected by the card.
+            Util.arrayFillNonAtomic(ram_buf, (short)0, recvLen, (byte)0x00);
+            ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+        }
+    }
+
+    /**
+     * \brief Parse the private key received into ram_buf and import it.
+     *
+     * \param recvLen The length of the data in ram_buf.
+     *
+     * \throw ISOException SW_DATA_INVALID, SW_WRONG_DATA, SW_CONDITIONS_NOT_SATISFIED.
+     */
+    private void importPrivateKeyFromRam(short recvLen) throws ISOException {
         short offset = 0;
         short len = 0;
 
