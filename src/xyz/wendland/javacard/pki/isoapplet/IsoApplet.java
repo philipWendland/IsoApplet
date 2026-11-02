@@ -53,7 +53,7 @@ import javacard.security.RandomData;
  *
  * \author Philip Wendland
  */
-public class IsoApplet extends Applet implements ExtendedLength {
+public final class IsoApplet extends Applet implements ExtendedLength {
     /* API Version */
     public static final byte API_VERSION_MAJOR = (byte) 0x01;
     public static final byte API_VERSION_MINOR = (byte) 0x00;

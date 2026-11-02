@@ -117,7 +117,7 @@ public class DedicatedFile extends File {
         }
         // Advance namePos from "tag" to value.
         try {
-            namePos += 1 + UtilTLV.getLengthFieldLength(length);
+            namePos = (short)(namePos + 1 + UtilTLV.getLengthFieldLength(length));
         } catch(InvalidArgumentsException e) {
             return false;
         }
