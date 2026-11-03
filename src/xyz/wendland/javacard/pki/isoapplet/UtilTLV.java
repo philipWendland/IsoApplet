@@ -56,7 +56,12 @@ public class UtilTLV {
             // Increase the position by: T length (1), L length, V length.
             // I.e. look at the next Tag, jump over current L and V field.
             // This saves execution time and ensures that no byte from V is misinterpreted.
-            tagPos += 1 + getLengthFieldLength(len) + len;
+            short step = (short)(1 + getLengthFieldLength(len));
+            // The value must not exceed the TLV structure. This also prevents a short overflow.
+            if(len > (short)(tlvOffset + tlvLength - tagPos - step)) {
+                throw InvalidArgumentsException.getInstance();
+            }
+            tagPos = (short)(tagPos + step + len);
         }
         throw NotFoundException.getInstance();
     }
@@ -83,7 +88,12 @@ public class UtilTLV {
         while(pos < (short)(length+offset-1)) {
             try {
                 len = decodeLengthField(tlv, (short)(pos+1));
-                pos += 1 + getLengthFieldLength(len) + len;
+                short step = (short)(1 + getLengthFieldLength(len));
+                // The value must not exceed the TLV structure. This also prevents a short overflow.
+                if(len > (short)(offset + length - pos - step)) {
+                    return false;
+                }
+                pos = (short)(pos + step + len);
             } catch (InvalidArgumentsException e) {
                 return false;
             }
