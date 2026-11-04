@@ -47,8 +47,8 @@ With GlobalPlatformPro, they are passed using `--params`.
 | Byte | Value | Meaning |
 |------|-------|---------|
 | 0 | `00` (default, also if no parameters are given) | Probe whether the smart card supports RSA keys of 4096 bit length. |
-| 0 | `01` | Do not probe, RSA 4096 is disabled. |
-| 0 | `02` | Do not probe, RSA 4096 is enabled. Only use this if your smart card supports RSA keys of 4096 bit length. Otherwise, generating or importing such keys fails with SW 6A81 (function not supported). |
+| 0 | `01` | Do not probe. The RSA 4096 feature bit is not set in the features byte (GET DATA `0101`), so clients such as OpenSC do not use 4096 bit RSA keys. This does not block the key operations themselves: if the smart card supports 4096 bit RSA, a client that requests it anyway is still served. |
+| 0 | `02` | Do not probe. The RSA 4096 feature bit is set in the features byte. Only use this if your smart card supports RSA keys of 4096 bit length. Otherwise, generating or importing such keys fails with SW 6A81 (function not supported). |
 
 Other values are rejected and the installation fails (IsoApplet throws SW 6A80, but the status word reported by the card's installer may differ).
 
