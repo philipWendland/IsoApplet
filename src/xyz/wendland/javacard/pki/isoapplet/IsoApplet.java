@@ -121,6 +121,20 @@ public final class IsoApplet extends Applet implements ExtendedLength {
     private static final byte API_FEATURE_RSA_PSS = (byte) 0x08;
     private static final byte API_FEATURE_RSA_4096 = (byte) 0x20;
 
+    /* Install parameters (applet specific parameters of the INSTALL command, tag C9,
+     * e.g. "gp --install IsoApplet.cap --params 800102"):
+     * A sequence of BER-TLV entries with one byte tags. Every entry is optional.
+     * Unknown tags are rejected, so that a setting is never silently ignored.
+     * Tag 80, length 1: Detection of RSA 4096 bit support.
+     *   00 (default, also if absent): Probe the card. On some cards, this takes very long.
+     *   01: Do not probe, RSA 4096 is disabled.
+     *   02: Do not probe, RSA 4096 is enabled. Only use this if the card supports RSA 4096.
+     */
+    private static final byte INSTALL_TAG_RSA_4096 = (byte) 0x80;
+    private static final byte INSTALL_PARAM_RSA_4096_PROBE = (byte) 0x00;
+    private static final byte INSTALL_PARAM_RSA_4096_DISABLED = (byte) 0x01;
+    private static final byte INSTALL_PARAM_RSA_4096_ENABLED = (byte) 0x02;
+
     /* The ram buffer is required for request and response data, that is too large for the APDU buffer.
        The size of the APDU buffer depends on the card, but must be at least 133 bytes long.
        We have to use the ram buffer for outgoing and incoming data larger than 133 bytes,
@@ -157,15 +171,90 @@ public final class IsoApplet extends Applet implements ExtendedLength {
      *			the starting offset in bArray
      * \param bLength
      *			the length in bytes of the parameter data in bArray
+     *
+     * \see INSTALL_TAG_RSA_4096 for the supported install parameters.
      */
     public static void install(byte[] bArray, short bOffset, byte bLength) {
-        new IsoApplet();
+        new IsoApplet(parseRsa4096Mode(bArray, bOffset, bLength));
+    }
+
+    /**
+     * \brief Get the RSA 4096 bit detection mode from the data passed to install().
+     *
+     * The data contains length-value encoded fields, each with a one byte length:
+     * the instance AID, the control information and the applet data (install parameters).
+     * The last fields may be missing or empty. For example, with the install parameters 800102:
+     *
+     *     0C F276A288BCFBA69D34F31001   00   03 800102
+     *     ^^ length of the AID          ^^   ^^ length of the install parameters
+     *                                   length of the control information
+     *
+     * The install parameters are checked here, before the applet allocates anything.
+     *
+     * \param bArray The array passed to install().
+     *
+     * \param bOffset The offset passed to install().
+     *
+     * \param bLength The length passed to install().
+     *
+     * \return The mode, see INSTALL_TAG_RSA_4096.
+     *
+     * \throw ISOException SW_WRONG_DATA if the install parameters are invalid.
+     */
+    static byte parseRsa4096Mode(byte[] bArray, short bOffset, byte bLength) {
+        // Lengths are unsigned (0..255), but a Java byte is signed, so 0x80..0xFF would be negative.
+        // "& 0xFF" keeps the low 8 bits of the value, e.g. the byte 0xC8 is 200 instead of -56.
+        short end = (short)(bOffset + (short)(bLength & 0xFF));
+        short offset = bOffset;
+        byte rsa4096Mode = INSTALL_PARAM_RSA_4096_PROBE;
+        boolean rsa4096ModeFound = false;
+
+        // Skip the instance AID and the control information.
+        for(byte i = 0; i < 2 && offset < end; i++) {
+            offset = (short)(offset + 1 + (short)(bArray[offset] & 0xFF));
+        }
+        if(offset >= end) {
+            return rsa4096Mode;
+        }
+
+        // offset is at the length of the install parameters. Move it to their first byte.
+        short paramsLength = (short)(bArray[offset] & 0xFF);
+        offset++;
+        short paramsEnd = (short)(offset + paramsLength);
+        if(paramsEnd > end || !UtilTLV.isTLVconsistent(bArray, offset, paramsLength)) {
+            ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+        }
+
+        try {
+            while(offset < paramsEnd) {
+                byte tag = bArray[offset];
+                short len = UtilTLV.decodeLengthField(bArray, (short)(offset + 1));
+                offset = (short)(offset + 1 + UtilTLV.getLengthFieldLength(len));
+
+                if(tag != INSTALL_TAG_RSA_4096 || len != 1 || rsa4096ModeFound) {
+                    ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+                }
+                rsa4096Mode = bArray[offset];
+                rsa4096ModeFound = true;
+                if(rsa4096Mode != INSTALL_PARAM_RSA_4096_PROBE
+                        && rsa4096Mode != INSTALL_PARAM_RSA_4096_DISABLED
+                        && rsa4096Mode != INSTALL_PARAM_RSA_4096_ENABLED) {
+                    ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+                }
+                offset = (short)(offset + len);
+            }
+        } catch(InvalidArgumentsException e) {
+            ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+        }
+        return rsa4096Mode;
     }
 
     /**
      * \brief Only this class's install method should create the applet object.
+     *
+     * \param rsa4096Mode How to detect RSA 4096 bit support, see INSTALL_TAG_RSA_4096.
      */
-    protected IsoApplet() {
+    private IsoApplet(byte rsa4096Mode) {
         api_features = API_FEATURE_EXT_APDU;
         pin = new OwnerPIN(PIN_MAX_TRIES, PIN_MAX_LENGTH);
         fs = new IsoFileSystem();
@@ -192,17 +281,24 @@ public final class IsoApplet extends Applet implements ExtendedLength {
             }
         }
 
-        // API features: probe card support for 4096 bit RSA keys
-        try {
-            RSAPrivateCrtKey testKey = (RSAPrivateCrtKey)KeyBuilder.buildKey(KeyBuilder.TYPE_RSA_CRT_PRIVATE, KeyBuilder.LENGTH_RSA_4096, false);
+        // API features: 4096 bit RSA keys, depending on the install parameters.
+        if(rsa4096Mode == INSTALL_PARAM_RSA_4096_ENABLED) {
             api_features |= API_FEATURE_RSA_4096;
-        } catch (CryptoException e) {
-            if(e.getReason() == CryptoException.NO_SUCH_ALGORITHM) {
-                api_features &= ~API_FEATURE_RSA_4096;
-            } else {
-                throw e;
+        } else if(rsa4096Mode == INSTALL_PARAM_RSA_4096_PROBE) {
+            // Probe card support for 4096 bit RSA keys.
+            // Note: On some cards, this takes so long that the installation times out.
+            try {
+                RSAPrivateCrtKey testKey = (RSAPrivateCrtKey)KeyBuilder.buildKey(KeyBuilder.TYPE_RSA_CRT_PRIVATE, KeyBuilder.LENGTH_RSA_4096, false);
+                api_features |= API_FEATURE_RSA_4096;
+            } catch (CryptoException e) {
+                if(e.getReason() == CryptoException.NO_SUCH_ALGORITHM) {
+                    api_features &= ~API_FEATURE_RSA_4096;
+                } else {
+                    throw e;
+                }
             }
         }
+        // INSTALL_PARAM_RSA_4096_DISABLED: API_FEATURE_RSA_4096 is not set.
 
         if(((api_features & API_FEATURE_RSA_4096) > (byte)0) && DEF_PRIVATE_KEY_IMPORT_ALLOWED) {
             // Importing an RSA 4096 private key in CRT format needs more space.
