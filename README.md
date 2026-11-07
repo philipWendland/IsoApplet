@@ -42,22 +42,24 @@ Install the CAP-file (IsoApplet.cap) to your Java Card smart card (e.g. with [Gl
 
 ## Installation parameters
 IsoApplet accepts optional installation parameters (the applet specific parameters of the INSTALL command, tag C9).
-With GlobalPlatformPro, they are passed using `--params`.
+They are a sequence of TLV entries (one byte tag, one byte length, value), each of them optional and allowed once.
+With GlobalPlatformPro, they are passed as hexadecimal string using `--params`.
 
-| Byte | Value | Meaning |
-|------|-------|---------|
-| 0 | `00` (default, also if no parameters are given) | Probe whether the smart card supports RSA keys of 4096 bit length. |
-| 0 | `01` | Do not probe. The RSA 4096 feature bit is not set in the features byte (GET DATA `0101`), so clients such as OpenSC do not use 4096 bit RSA keys. This does not block the key operations themselves: if the smart card supports 4096 bit RSA, a client that requests it anyway is still served. |
-| 0 | `02` | Do not probe. The RSA 4096 feature bit is set in the features byte. Only use this if your smart card supports RSA keys of 4096 bit length. Otherwise, generating or importing such keys fails with SW 6A81 (function not supported). |
+| Tag | Length | Value | Meaning |
+|-----|--------|-------|---------|
+| `80` | `01` | `00` (default, also if the tag is not given) | Probe whether the smart card supports RSA keys of 4096 bit length. |
+| `80` | `01` | `01` | Do not probe. The RSA 4096 feature bit is not set in the features byte (GET DATA `0101`), so clients such as OpenSC do not use 4096 bit RSA keys. This does not block the key operations themselves: if the smart card supports 4096 bit RSA, a client that requests it anyway is still served. |
+| `80` | `01` | `02` | Do not probe. The RSA 4096 feature bit is set in the features byte. Only use this if your smart card supports RSA keys of 4096 bit length. Otherwise, generating or importing such keys fails with SW 6A81 (function not supported). |
 
-Other values are rejected and the installation fails (IsoApplet throws SW 6A80, but the status word reported by the card's installer may differ).
+Other values, unknown tags, repeated tags and malformed TLV data are rejected and the installation fails (IsoApplet throws SW 6A80, but the status word reported by the card's installer may differ).
+Rejecting unknown tags ensures that a setting is never silently ignored, for example by an older version of IsoApplet.
 
 On some smart cards, probing for RSA 4096 support takes so long that the installation times out:
 The INSTALL command gets no response, GlobalPlatformPro reports e.g. `Invalid argument: newPosition < 0: (-2 < 0)`,
 and `gp -l` lists the IsoApplet package, but no applet instance.
-In this case, install with `01` or `02`, e.g.:
+In this case, install with tag `80` set to `01` or `02`, e.g. to skip the probe on a smart card with support for RSA keys of 4096 bit length:
 ```
-gp --install IsoApplet.cap --params 02
+gp --install IsoApplet.cap --params 800102
 ```
 
 **Have a look at the wiki for more information:** https://github.com/philipWendland/IsoApplet/wiki
