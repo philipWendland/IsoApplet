@@ -4,3 +4,5 @@ doc
 *.orig
 *.un~
 *.cap
+build
+lib

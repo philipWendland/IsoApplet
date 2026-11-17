@@ -16,6 +16,56 @@
     <target name="clean" description="clean up">
         <!-- Delete the built applet -->
         <delete dir="IsoApplet.cap"/>
+        <delete dir="build"/>
+    </target>
+
+    <!-- The tests run in-process in JCardEngine. Both jars are single files with all their dependencies. -->
+    <property name="jcard.url" value="https://github.com/martinpaljak/JCardEngine/releases/download/v26.08.23/jcard.jar"/>
+    <property name="jcard.sha256" value="9a30b56748d635a86c77cfdf3df1ebb634e97c8135d84efaf23ffb183b87b674"/>
+    <property name="junit.url" value="https://repo1.maven.org/maven2/org/junit/platform/junit-platform-console-standalone/1.13.4/junit-platform-console-standalone-1.13.4.jar"/>
+    <property name="junit.sha256" value="3fdfc37e29744a9a67dd5365e81467e26fbde0b7aa204e6f8bbe79eeaa7ae892"/>
+
+    <path id="test.classpath">
+        <pathelement location="lib/jcard.jar"/>
+        <pathelement location="lib/junit-console.jar"/>
+    </path>
+
+    <target name="test-deps">
+        <mkdir dir="lib"/>
+        <get src="${jcard.url}" dest="lib/jcard.jar" skipexisting="true"/>
+        <get src="${junit.url}" dest="lib/junit-console.jar" skipexisting="true"/>
+        <fail message="lib/jcard.jar does not match jcard.sha256. Delete it to download it again.">
+            <condition><not><checksum file="lib/jcard.jar" algorithm="SHA-256" property="${jcard.sha256}"/></not></condition>
+        </fail>
+        <fail message="lib/junit-console.jar does not match junit.sha256. Delete it to download it again.">
+            <condition><not><checksum file="lib/junit-console.jar" algorithm="SHA-256" property="${junit.sha256}"/></not></condition>
+        </fail>
+    </target>
+
+    <target name="test" depends="test-deps" description="run the tests, or only one class with -Dtest.class=SmokeTest">
+        <mkdir dir="build/classes"/>
+        <mkdir dir="build/test-classes"/>
+        <javac srcdir="src" destdir="build/classes" release="17" debug="true" encoding="UTF-8"
+               includeantruntime="false" classpathref="test.classpath"/>
+        <javac srcdir="test/java" destdir="build/test-classes" release="17" debug="true" encoding="UTF-8"
+               includeantruntime="false">
+            <classpath>
+                <path refid="test.classpath"/>
+                <pathelement location="build/classes"/>
+            </classpath>
+        </javac>
+        <condition property="test.select" value="--select-class xyz.wendland.javacard.pki.isoapplet.${test.class}"
+                   else="--scan-classpath build/test-classes">
+            <isset property="test.class"/>
+        </condition>
+        <java classname="org.junit.platform.console.ConsoleLauncher" fork="true" failonerror="true">
+            <classpath>
+                <path refid="test.classpath"/>
+                <pathelement location="build/classes"/>
+                <pathelement location="build/test-classes"/>
+            </classpath>
+            <arg line="execute ${test.select} --fail-if-no-tests --details=tree --disable-ansi-colors --disable-banner"/>
+        </java>
     </target>
 
 </project>
