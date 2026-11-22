@@ -26,6 +26,9 @@ import javacard.framework.APDU;
 import javacard.framework.JCSystem;
 import javacard.framework.Util;
 import javacard.framework.OwnerPIN;
+import javacard.framework.CardRuntimeException;
+import javacard.framework.SystemException;
+import javacard.framework.TransactionException;
 import javacard.security.KeyBuilder;
 import javacard.security.KeyPair;
 import javacard.security.Key;
@@ -385,11 +388,81 @@ public final class IsoApplet extends Applet implements ExtendedLength {
     /**
      * \brief Processes an incoming APDU.
      *
+     * The runtime answers 6F00 ("no precise diagnosis") to any exception other than ISOException.
+     * A card that runs out of memory is reported as 6A84 instead (see statusWordForMemoryShortage()),
+     * so that a client can tell a full card from a fault.
+     *
      * \see APDU.
      *
      * \param apdu The incoming APDU.
      */
     public void process(APDU apdu) {
+        try {
+            processCommand(apdu);
+        } catch (SystemException e) {
+            if(statusWordForMemoryShortage(e) == ISO7816.SW_NO_ERROR) {
+                throw e;
+            }
+            failWithMemoryShortage();
+        } catch (TransactionException e) {
+            if(statusWordForMemoryShortage(e) == ISO7816.SW_NO_ERROR) {
+                throw e;
+            }
+            failWithMemoryShortage();
+        }
+    }
+
+    /**
+     * \brief The status word for an exception that signals a lack of memory.
+     *
+     * Example: CREATE FILE for an EF of 4608 bytes on a card with 3 kB of free persistent memory
+     * runs new byte[4608], which throws SystemException.NO_RESOURCE; the answer becomes 6A84
+     * instead of 6F00.
+     *
+     * \param e The exception that left a command handler.
+     *
+     * \return ISO7816.SW_FILE_FULL (6A84, "not enough memory space") for SystemException.NO_RESOURCE,
+     *         SystemException.NO_TRANSIENT_SPACE and TransactionException.BUFFER_FULL;
+     *         ISO7816.SW_NO_ERROR (9000) for any other exception, which process() rethrows unchanged.
+     */
+    static short statusWordForMemoryShortage(CardRuntimeException e) {
+        short reason = e.getReason();
+        if(e instanceof SystemException
+                && (reason == SystemException.NO_RESOURCE || reason == SystemException.NO_TRANSIENT_SPACE)) {
+            return ISO7816.SW_FILE_FULL;
+        }
+        if(e instanceof TransactionException && reason == TransactionException.BUFFER_FULL) {
+            return ISO7816.SW_FILE_FULL;
+        }
+        return ISO7816.SW_NO_ERROR;
+    }
+
+    /**
+     * \brief Ends the command with 6A84 after the card ran out of memory.
+     *
+     * An open transaction is aborted first, so that its changes are undone here rather than left to the
+     * runtime. A command that fails in the middle of allocating leaves unreachable objects behind: CREATE FILE
+     * allocates the file object and its FCI copy before new byte[size] fails. Object deletion frees them,
+     * so that a failed command does not leave the card with less memory than before.
+     *
+     * \throw ISOException ISO7816.SW_FILE_FULL, always.
+     */
+    private void failWithMemoryShortage() {
+        if(JCSystem.getTransactionDepth() != 0) {
+            JCSystem.abortTransaction();
+        }
+        if(JCSystem.isObjectDeletionSupported()) {
+            JCSystem.requestObjectDeletion();
+        }
+        ISOException.throwIt(ISO7816.SW_FILE_FULL);
+    }
+
+    /**
+     * \brief Dispatches an incoming APDU to its command handler.
+     *
+     * \param apdu The incoming APDU.
+     */
+    private void processCommand(APDU apdu) {
         byte buffer[] = apdu.getBuffer();
         byte ins = buffer[ISO7816.OFFSET_INS];
 
