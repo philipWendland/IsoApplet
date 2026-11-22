@@ -778,7 +778,9 @@ public class IsoFileSystem extends DedicatedFile {
                 && ((short) ((short)32767-offsetFile) >= lc)) { // Check for possible short overflow.
             short offsetCdata = apdu.getOffsetCdata();
             while(recvLen > 0) {
-                Util.arrayCopy(buf, offsetCdata, efTr.getData(), offsetFile, recvLen);
+                // Non-atomic on purpose: an atomic copy must fit the card's transaction buffer,
+                // whose size differs between cards, but is likely below 800 bytes in practice.
+                Util.arrayCopyNonAtomic(buf, offsetCdata, efTr.getData(), offsetFile, recvLen);
                 offsetFile += recvLen;
                 recvLen = apdu.receiveBytes(offsetCdata);
             }
